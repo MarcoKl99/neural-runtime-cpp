@@ -1,0 +1,120 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include "nrt/linear.hpp"
+#include "nrt/tensor.hpp"
+
+TEST_CASE("Linear construction", "[linear][construction]") {
+    nrt::Linear layer(3, 2);
+
+    SECTION("Feature counts are stored correctly") {
+        REQUIRE(layer.in_features() == 3);
+        REQUIRE(layer.out_features() == 2);
+    }
+
+    SECTION("Weights have correct shape") {
+        REQUIRE(layer.weights().shape() == std::vector<size_t>{2, 3});
+    }
+
+    SECTION("Bias has correct shape") {
+        REQUIRE(layer.bias().shape() == std::vector<size_t>{2, 1});
+    }
+
+    SECTION("Bias is zero-initialized") {
+        REQUIRE(layer.bias()(0, 0) == 0.0);
+        REQUIRE(layer.bias()(1, 0) == 0.0);
+    }
+
+    SECTION("Weights are randomly initialized (not all zero)") {
+        // Loser Sanity-Check: bei zufaelliger Normalverteilung (sigma=0.1)
+        // ist es praktisch ausgeschlossen, dass alle 6 Werte exakt 0.0 sind.
+        bool all_zero = true;
+        for (size_t i = 0; i < 2; ++i) {
+            for (size_t j = 0; j < 3; ++j) {
+                if (layer.weights()(i, j) != 0.0) {
+                    all_zero = false;
+                }
+            }
+        }
+        REQUIRE_FALSE(all_zero);
+    }
+}
+
+TEST_CASE("Linear set_weights", "[linear][set_weights]") {
+    nrt::Linear layer(2, 2);
+
+    nrt::Tensor w({2, 2});
+    w(0, 0) = 1.0;
+    w(0, 1) = 2.0;
+    w(1, 0) = 3.0;
+    w(1, 1) = 4.0;
+
+    nrt::Tensor b({2, 1});
+    b(0, 0) = 0.5;
+    b(1, 0) = -0.5;
+
+    SECTION("Weights and bias are correctly overwritten") {
+        layer.set_weights(w, b);
+        REQUIRE(layer.weights()(0, 0) == 1.0);
+        REQUIRE(layer.weights()(1, 1) == 4.0);
+        REQUIRE(layer.bias()(0, 0) == 0.5);
+        REQUIRE(layer.bias()(1, 0) == -0.5);
+    }
+
+    SECTION("Wrong weight shape throws") {
+        nrt::Tensor wrong_w({3, 2});
+        REQUIRE_THROWS_AS(layer.set_weights(wrong_w, b), std::invalid_argument);
+    }
+
+    SECTION("Wrong bias shape throws") {
+        nrt::Tensor wrong_b({3, 1});
+        REQUIRE_THROWS_AS(layer.set_weights(w, wrong_b), std::invalid_argument);
+    }
+}
+
+TEST_CASE("Linear forward", "[linear][forward]") {
+    nrt::Linear layer(3, 2);
+
+    // W = [[1, 2, 3], [4, 5, 6]], b = [1, 1]
+    nrt::Tensor w({2, 3});
+    w(0, 0) = 1.0;
+    w(0, 1) = 2.0;
+    w(0, 2) = 3.0;
+    w(1, 0) = 4.0;
+    w(1, 1) = 5.0;
+    w(1, 2) = 6.0;
+
+    nrt::Tensor b({2, 1});
+    b(0, 0) = 1.0;
+    b(1, 0) = 1.0;
+
+    layer.set_weights(w, b);
+
+    // x = [1, 1, 1]^T
+    nrt::Tensor x({3, 1});
+    x(0, 0) = 1.0;
+    x(1, 0) = 1.0;
+    x(2, 0) = 1.0;
+
+    SECTION("Output has correct shape") {
+        nrt::Tensor y = layer.forward(x);
+        REQUIRE(y.shape() == std::vector<size_t>{2, 1});
+    }
+
+    SECTION("Output is correctly computed (W*x + b)") {
+        // y[0] = 1*1 + 2*1 + 3*1 + 1 = 7
+        // y[1] = 4*1 + 5*1 + 6*1 + 1 = 16
+        nrt::Tensor y = layer.forward(x);
+        REQUIRE(y(0, 0) == 7.0);
+        REQUIRE(y(1, 0) == 16.0);
+    }
+
+    SECTION("Wrong input shape throws") {
+        nrt::Tensor wrong_x({4, 1});
+        REQUIRE_THROWS_AS(layer.forward(wrong_x), std::invalid_argument);
+    }
+
+    SECTION("1D input throws (must be {in_features, 1})") {
+        nrt::Tensor wrong_x({3});
+        REQUIRE_THROWS_AS(layer.forward(wrong_x), std::invalid_argument);
+    }
+}

@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Core Library
 add_library(nrt_core
     src/tensor.cpp
+    src/linear.cpp
 )
 
 # Add the include directory to use #include "nrt/..."
@@ -24,7 +25,11 @@ FetchContent_MakeAvailable(Catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
 enable_testing()
-add_executable(nrt_tests tests/test_tensor.cpp)
+add_executable(
+    nrt_tests
+    tests/test_tensor.cpp
+    tests/test_linear.cpp
+)
 target_link_libraries(nrt_tests PRIVATE nrt::core Catch2::Catch2WithMain)
 
 include(Catch)
