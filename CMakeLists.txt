@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(nrt_core
     src/tensor.cpp
     src/linear.cpp
+    src/activations.cpp
 )
 
 # Add the include directory to use #include "nrt/..."
@@ -29,6 +30,7 @@ add_executable(
     nrt_tests
     tests/test_tensor.cpp
     tests/test_linear.cpp
+    tests/test_activations.cpp
 )
 target_link_libraries(nrt_tests PRIVATE nrt::core Catch2::Catch2WithMain)
 
