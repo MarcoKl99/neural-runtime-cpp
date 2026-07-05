@@ -44,8 +44,18 @@ public:
     Tensor& operator-=(const Tensor& other);
     Tensor operator-(const Tensor& other) const;
 
+    // Scalar multiplication
+    Tensor& operator*=(double scalar);
+    Tensor operator*(double scalar) const;
+
     // Hadamard product
     Tensor hadamard(const Tensor& other) const;
+
+    // Matrix multiplication
+    Tensor matmul(const Tensor& other) const;
+
+    // Transpose
+    Tensor transpose() const;
 
 private:
     std::vector<size_t> shape_;

@@ -172,6 +172,19 @@ Tensor Tensor::operator-(const Tensor& other) const {
     return result;
 }
 
+Tensor& Tensor::operator*=(double scalar) {
+    for (double& val : data_) {
+        val *= scalar;
+    }
+    return *this;
+}
+
+Tensor Tensor::operator*(double scalar) const {
+    Tensor result = *this;
+    result *= scalar;
+    return result;
+}
+
 Tensor Tensor::hadamard(const Tensor& other) const {
     // The shapes must be equal here
     if (shape_ != other.shape_) {
@@ -182,6 +195,54 @@ Tensor Tensor::hadamard(const Tensor& other) const {
     Tensor result = *this;
     for (size_t i = 0; i < data_.size(); ++i) {
         result.data_[i] *= other.data_[i];
+    }
+
+    return result;
+}
+
+Tensor Tensor::matmul(const Tensor& other) const {
+    if (rank() != 2 || other.rank() != 2) {
+        throw std::invalid_argument("Tensor::matmul: both tensors must be rank 2");
+    }
+    if (shape_[1] != other.shape_[0]) {
+        throw std::invalid_argument("Tensor::matmul: inner dimensions do not match");
+    }
+
+    size_t m = shape_[0];
+    size_t n = shape_[1];
+    size_t p = other.shape_[1];
+
+    Tensor result({m, p});
+
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < p; ++j) {
+            double sum = 0.0;
+            for (size_t k = 0; k < n; ++k) {
+                sum += (*this)(i, k) * other(k, j);
+            }
+            result(i, j) = sum;
+        }
+    }
+
+    return result;
+}
+
+Tensor Tensor::transpose() const {
+    // Only defined for rank 2 here
+    if (rank() != 2) {
+        throw std::invalid_argument("Tensor::transpose: requires rank 2");
+    }
+
+    // Create the result Tensor
+    size_t rows = shape_[0];
+    size_t cols = shape_[1];
+    Tensor result({cols, rows});
+
+    // Full in the correct values
+    for (size_t i = 0; i < rows; ++i) {
+        for (size_t j = 0; j < cols; ++j) {
+            result(j, i) = (*this)(i, j);
+        }
     }
 
     return result;
