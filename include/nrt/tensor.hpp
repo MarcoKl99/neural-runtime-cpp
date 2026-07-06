@@ -57,6 +57,9 @@ public:
     // Transpose
     Tensor transpose() const;
 
+    // Helper function
+    double sum() const;
+
 private:
     std::vector<size_t> shape_;
     std::vector<double> data_;

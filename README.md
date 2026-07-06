@@ -36,4 +36,10 @@ Third building block:
   `sigmoid`, `sigmoid_derivative`
 - Tests
 
+Fourth building block:
+
+- `Tensor::sum()`
+- MSE loss (`nrt/loss.hpp`, free function `mse(y_hat, y) -> double`)
+- Tests
+
 More to come! 🚀

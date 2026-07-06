@@ -248,4 +248,13 @@ Tensor Tensor::transpose() const {
     return result;
 }
 
+// Helper function e.g. for the MSE-loss
+double Tensor::sum() const {
+    double total = 0.0;
+    for (double val : data_) {
+        total += val;
+    }
+    return total;
+}
+
 }  // namespace nrt
