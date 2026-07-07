@@ -42,15 +42,23 @@ Fourth building block:
 - MSE loss (`nrt/loss.hpp`, free function `mse(y_hat, y) -> double`)
 - Tests
 
-## Example 🧪
-
-`examples/xor_forward.cpp` — a small MLP (2 → Linear → 4 → ReLU → Linear → 1 → Sigmoid) run
-forward on all four XOR cases, with weights still randomly initialized (no training yet).
-
 Fifth building block:
 
 - `Linear::backward(...)`: gradients w.r.t. weights, bias and input (accumulating)
 - `zero_grad()`, `average_grad_weights()`, `average_grad_bias()`
 - Tests
+
+Sixth building block:
+
+- `relu_backward`, `sigmoid_backward` (chain rule: grad_output * local derivative)
+- `mse_derivative`
+- Tests
+
+## Examples 🧪
+
+- `examples/xor_forward.cpp` — forward pass only, random weights, no training.
+- `examples/xor_training.cpp` — full manual training loop (forward + backward + manual
+  weight update, no optimizer class yet) over all 4 XOR samples. See
+  `notes/xor_training.md` for an interesting observation on the Dying ReLU problem.
 
 More to come! 🚀

@@ -67,3 +67,66 @@ TEST_CASE("mse", "[loss][mse]") {
         REQUIRE_THROWS_AS(nrt::mse(y_hat, y), std::invalid_argument);
     }
 }
+
+TEST_CASE("mse_derivative", "[loss][mse][backward]") {
+    SECTION("Identical tensors give zero gradient") {
+        nrt::Tensor y_hat({3});
+        nrt::Tensor y({3});
+        y_hat(0) = 1.0;
+        y_hat(1) = 2.0;
+        y_hat(2) = 3.0;
+        y(0) = 1.0;
+        y(1) = 2.0;
+        y(2) = 3.0;
+
+        nrt::Tensor grad = nrt::mse_derivative(y_hat, y);
+        REQUIRE(grad(0) == 0.0);
+        REQUIRE(grad(1) == 0.0);
+        REQUIRE(grad(2) == 0.0);
+    }
+
+    SECTION("Known value, 1D") {
+        // y_hat = [1, 2], y = [3, 4], n = 2
+        // grad = (2/2) * (y_hat - y) = [1*(1-3), 1*(2-4)] = [-2, -2]
+        nrt::Tensor y_hat({2});
+        nrt::Tensor y({2});
+        y_hat(0) = 1.0;
+        y_hat(1) = 2.0;
+        y(0) = 3.0;
+        y(1) = 4.0;
+
+        nrt::Tensor grad = nrt::mse_derivative(y_hat, y);
+        REQUIRE(grad(0) == -2.0);
+        REQUIRE(grad(1) == -2.0);
+    }
+
+    SECTION("Known value, 2D") {
+        // y_hat = [[0,0],[0,0]], y = [[1,1],[1,1]], n = 4
+        // grad = (2/4) * (0 - 1) = -0.5 everywhere
+        nrt::Tensor y_hat({2, 2});
+        nrt::Tensor y({2, 2});
+        y(0, 0) = 1.0;
+        y(0, 1) = 1.0;
+        y(1, 0) = 1.0;
+        y(1, 1) = 1.0;
+
+        nrt::Tensor grad = nrt::mse_derivative(y_hat, y);
+        REQUIRE(grad(0, 0) == -0.5);
+        REQUIRE(grad(0, 1) == -0.5);
+        REQUIRE(grad(1, 0) == -0.5);
+        REQUIRE(grad(1, 1) == -0.5);
+    }
+
+    SECTION("Gradient shape matches input shape") {
+        nrt::Tensor y_hat({3, 1});
+        nrt::Tensor y({3, 1});
+        nrt::Tensor grad = nrt::mse_derivative(y_hat, y);
+        REQUIRE(grad.shape() == std::vector<size_t>{3, 1});
+    }
+
+    SECTION("Shape mismatch throws") {
+        nrt::Tensor y_hat({2});
+        nrt::Tensor y({3});
+        REQUIRE_THROWS_AS(nrt::mse_derivative(y_hat, y), std::invalid_argument);
+    }
+}

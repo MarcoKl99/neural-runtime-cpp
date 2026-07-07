@@ -45,6 +45,12 @@ add_executable(xor_forward
 )
 target_link_libraries(xor_forward PRIVATE nrt::core)
 
+add_executable(xor_training
+    examples/xor_training.cpp
+)
+target_link_libraries(xor_training PRIVATE nrt::core)
+
+
 # Optional local scratch file (gitignore)
 if(EXISTS ${CMAKE_SOURCE_DIR}/dev.cpp)
     add_executable(dev dev.cpp)
