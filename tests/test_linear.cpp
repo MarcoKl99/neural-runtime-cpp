@@ -118,3 +118,122 @@ TEST_CASE("Linear forward", "[linear][forward]") {
         REQUIRE_THROWS_AS(layer.forward(wrong_x), std::invalid_argument);
     }
 }
+
+TEST_CASE("Linear backward", "[linear][backward]") {
+    nrt::Linear layer(2, 2);
+
+    // W = [[1, 2], [3, 4]], b = [0, 0]
+    nrt::Tensor w({2, 2});
+    w(0, 0) = 1.0;
+    w(0, 1) = 2.0;
+    w(1, 0) = 3.0;
+    w(1, 1) = 4.0;
+    nrt::Tensor b({2, 1});
+    layer.set_weights(w, b);
+
+    // x = [1, 2]^T
+    nrt::Tensor x({2, 1});
+    x(0, 0) = 1.0;
+    x(1, 0) = 2.0;
+
+    // grad_output = [1, 1]^T
+    nrt::Tensor grad_output({2, 1});
+    grad_output(0, 0) = 1.0;
+    grad_output(1, 0) = 1.0;
+
+    SECTION("backward without prior forward throws") {
+        REQUIRE_THROWS_AS(layer.backward(grad_output), std::logic_error);
+    }
+
+    SECTION("grad_x is correctly computed (W^T * grad_output)") {
+        layer.forward(x);
+        nrt::Tensor grad_x = layer.backward(grad_output);
+        // Expected: [1*1+3*1, 2*1+4*1] = [4, 6]
+        REQUIRE(grad_x.shape() == std::vector<size_t>{2, 1});
+        REQUIRE(grad_x(0, 0) == 4.0);
+        REQUIRE(grad_x(1, 0) == 6.0);
+    }
+
+    SECTION("grad_output shape mismatch throws") {
+        layer.forward(x);
+        nrt::Tensor wrong_grad({3, 1});
+        REQUIRE_THROWS_AS(layer.backward(wrong_grad), std::invalid_argument);
+    }
+
+    SECTION("average_grad_weights before any backward call throws") {
+        REQUIRE_THROWS_AS(layer.average_grad_weights(), std::logic_error);
+    }
+
+    SECTION("average_grad_bias before any backward call throws") {
+        REQUIRE_THROWS_AS(layer.average_grad_bias(), std::logic_error);
+    }
+
+    SECTION("Single backward call: average equals raw gradient") {
+        layer.forward(x);
+        layer.backward(grad_output);
+
+        // dL/dW = grad_output * x^T = [[1,2],[1,2]]
+        nrt::Tensor gw = layer.average_grad_weights();
+        REQUIRE(gw(0, 0) == 1.0);
+        REQUIRE(gw(0, 1) == 2.0);
+        REQUIRE(gw(1, 0) == 1.0);
+        REQUIRE(gw(1, 1) == 2.0);
+
+        // dL/db = grad_output = [1, 1]
+        nrt::Tensor gb = layer.average_grad_bias();
+        REQUIRE(gb(0, 0) == 1.0);
+        REQUIRE(gb(1, 0) == 1.0);
+    }
+
+    SECTION("Two identical backward calls: average equals single-call gradient") {
+        layer.forward(x);
+        layer.backward(grad_output);
+        layer.forward(x);
+        layer.backward(grad_output);
+
+        // Gradients are equal -> average stays the same
+        // Not the sum of the gradients - chosen to use average (would be [2,4]/[2,4] instead of
+        // [1,2]/[1,2])
+        nrt::Tensor gw = layer.average_grad_weights();
+        REQUIRE(gw(0, 0) == 1.0);
+        REQUIRE(gw(0, 1) == 2.0);
+        REQUIRE(gw(1, 0) == 1.0);
+        REQUIRE(gw(1, 1) == 2.0);
+
+        nrt::Tensor gb = layer.average_grad_bias();
+        REQUIRE(gb(0, 0) == 1.0);
+        REQUIRE(gb(1, 0) == 1.0);
+    }
+
+    SECTION("zero_grad resets accumulated gradients and count") {
+        layer.forward(x);
+        layer.backward(grad_output);
+
+        layer.zero_grad();
+
+        // Nach zero_grad muss average_grad_* wieder werfen (count == 0)
+        REQUIRE_THROWS_AS(layer.average_grad_weights(), std::logic_error);
+        REQUIRE_THROWS_AS(layer.average_grad_bias(), std::logic_error);
+    }
+
+    SECTION("zero_grad followed by a fresh backward gives correct fresh gradient") {
+        layer.forward(x);
+        layer.backward(grad_output);
+        layer.zero_grad();
+
+        // Anderer grad_output, um sicherzustellen, dass nichts vom ersten Aufruf uebrig ist
+        nrt::Tensor grad_output_2({2, 1});
+        grad_output_2(0, 0) = 2.0;
+        grad_output_2(1, 0) = 2.0;
+
+        layer.forward(x);
+        layer.backward(grad_output_2);
+
+        // dL/dW = [2,2]^T * [1,2] = [[2,4],[2,4]]
+        nrt::Tensor gw = layer.average_grad_weights();
+        REQUIRE(gw(0, 0) == 2.0);
+        REQUIRE(gw(0, 1) == 4.0);
+        REQUIRE(gw(1, 0) == 2.0);
+        REQUIRE(gw(1, 1) == 4.0);
+    }
+}

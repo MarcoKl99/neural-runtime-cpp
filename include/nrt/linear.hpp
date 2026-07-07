@@ -1,24 +1,32 @@
 #pragma once
 
+#include <optional>
+
 #include "nrt/tensor.hpp"
 
 namespace nrt {
 
 class Linear {
 public:
-    Linear(size_t in_features, size_t out_features);
-
     /*
     Computes an affine transformation y = Wx + b with weights W.shape = {out_features, in_features}
     and b.shape = {out_feautes, 1},
     -> y.shape = {out_features, 1}
     */
 
+    Linear(size_t in_features, size_t out_features);
+
     // Overwrite randomly init weights for testing
     void set_weights(const Tensor& w, const Tensor& b);
 
     // x of shape {in_features, 1} - returns shape {out_features, 1}.
-    Tensor forward(const Tensor& x) const;
+    Tensor forward(const Tensor& x);
+    Tensor backward(const Tensor& grad_output);
+    void zero_grad();
+
+    // Note: Not const Tensor as a return type to enable std::move behavior by default
+    Tensor average_grad_weights() const;
+    Tensor average_grad_bias() const;
 
     size_t in_features() const;
     size_t out_features() const;
@@ -33,6 +41,12 @@ private:
     size_t out_features_;
     Tensor weights_;
     Tensor bias_;
+    std::optional<Tensor> last_input_;
+    Tensor grad_weights_;
+    Tensor grad_bias_;
+
+    // Count how many times .backward(...) has been called for now (for averaged gradients)
+    size_t accumulation_count_ = 0;
 };
 
 }  // namespace nrt
