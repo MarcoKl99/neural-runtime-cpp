@@ -50,4 +50,14 @@ Tensor sigmoid_derivative(const Tensor& x) {
     });
 }
 
+Tensor relu_backward(const Tensor& grad_output, const Tensor& x) {
+    // Chain rule elementwise -> Hadamard product
+    return grad_output.hadamard(relu_derivative(x));
+}
+
+Tensor sigmoid_backward(const Tensor& grad_output, const Tensor& x) {
+    // Chain rule elementwise -> Hadamard product
+    return grad_output.hadamard(sigmoid_derivative(x));
+}
+
 }  // namespace nrt
