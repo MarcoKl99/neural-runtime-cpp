@@ -2,6 +2,7 @@
 dev.cpp
 PROGRESS.md
 .vscode
+.venv
 
 # Prerequisites
 *.d

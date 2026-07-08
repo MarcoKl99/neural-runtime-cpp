@@ -1,5 +1,32 @@
 # XOR Training - Observations 🔎
 
+## Summary ⏩
+
+- Manually implemented Neural Network trains successfully on the XOR problem
+- Loss (MSE) decreases from 0.250 (epoch 0) to 0.001 (epoch 5000)
+
+**C++ Output (examples/xor_training.cpp):**
+
+```text
+Loss (0/5000):      0.249599
+Loss (1000/5000):   0.0926499
+Loss (2000/5000):   0.00656239
+Loss (3000/5000):   0.00258529
+Loss (4000/5000):   0.00150208
+Loss (5000/5000):   0.00102746
+```
+
+**Comparison to PyTorch (references/xor_training_pytorch.py):**
+
+```text
+Loss (0/5000):      0.24960961
+Loss (1000/5000):   0.09308553
+Loss (2000/5000):   0.00656716
+Loss (3000/5000):   0.00258774
+Loss (4000/5000):   0.00150301
+Loss (5000/5000):   0.00102766
+```
+
 ## Context 📖
 
 The file `examples/xor_training.cpp` trains a small MLP (`Linear(2,4) -> ReLU -> Linear(4,1) -> Sigmoid`)
