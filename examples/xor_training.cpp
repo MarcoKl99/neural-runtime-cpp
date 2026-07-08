@@ -18,6 +18,13 @@ Note: depending on random weight initialization, this can occasionally get stuck
 
 namespace {
 
+// Average accumulated gradients by batch size
+void average_gradients(std::vector<nrt::Parameter>& params, size_t batch_size) {
+    for (auto& param : params) {
+        *param.gradient = *param.gradient * (1.0 / batch_size);
+    }
+}
+
 // Print the initial weights for the comparison to PyTorch
 void print_weights(nrt::Linear& layer1, nrt::Linear& layer2) {
     // Print initial weights for reference validation
@@ -167,28 +174,28 @@ int main() {
     const double learning_rate = 0.1;
     const int epochs = 5000;
 
+    // Collect all parameters and create optimizer
+    auto params = layer1.parameters();
+    auto l2_params = layer2.parameters();
+    params.insert(params.end(), l2_params.begin(), l2_params.end());
+    nrt::SGD optimizer(params, learning_rate);
+
     // Calculate the loss before training
     double loss_before = evaluate_average_loss(layer1, layer2, inputs, targets);
     std::cout << "Average loss BEFORE update: " << loss_before << '\n';
 
     for (int i = 0; i < epochs; ++i) {
         // One complete full-batch gradient descent
-        layer1.zero_grad();
-        layer2.zero_grad();
+        optimizer.zero_grad();
 
-        // Gradients get accumulated at every iteration
-        for (size_t i = 0; i < inputs.size(); ++i) {
-            forward_backward_step(layer1, layer2, inputs[i], targets[i]);
+        // Accumulate gradients across all samples
+        for (size_t j = 0; j < inputs.size(); ++j) {
+            forward_backward_step(layer1, layer2, inputs[j], targets[j]);
         }
 
-        // Apply the averaged gradients manually
-        nrt::Tensor new_w1 = layer1.weights() - layer1.average_grad_weights() * learning_rate;
-        nrt::Tensor new_b1 = layer1.bias() - layer1.average_grad_bias() * learning_rate;
-        layer1.set_weights(new_w1, new_b1);
-
-        nrt::Tensor new_w2 = layer2.weights() - layer2.average_grad_weights() * learning_rate;
-        nrt::Tensor new_b2 = layer2.bias() - layer2.average_grad_bias() * learning_rate;
-        layer2.set_weights(new_w2, new_b2);
+        // Average gradients and apply optimizer step - Averaging step to be refactored later
+        average_gradients(params, inputs.size());
+        optimizer.step();
 
         // Check if the loss has improved
         if ((i % 1000) == 0) {

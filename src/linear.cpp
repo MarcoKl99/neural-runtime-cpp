@@ -97,6 +97,13 @@ Tensor Linear::average_grad_bias() const {
     return grad_bias_ * (1.0 / static_cast<double>(accumulation_count_));
 }
 
+std::vector<nrt::Parameter> Linear::parameters() {
+    return {
+        {&weights_, &grad_weights_},
+        {&bias_, &grad_bias_},
+    };
+}
+
 // Getter
 size_t Linear::in_features() const {
     return in_features_;

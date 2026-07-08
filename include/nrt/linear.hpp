@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "nrt/optimizer.hpp"
 #include "nrt/tensor.hpp"
 
 namespace nrt {
@@ -35,6 +36,9 @@ public:
     // (Tensor instances can be large)
     const Tensor& weights() const;
     const Tensor& bias() const;
+
+    // Get all parameters in the reference struct
+    std::vector<Parameter> parameters();
 
 private:
     size_t in_features_;
