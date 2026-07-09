@@ -57,8 +57,7 @@ Sixth building block:
 ## Examples 🧪
 
 - `examples/xor_forward.cpp` — forward pass only, random weights, no training.
-- `examples/xor_training.cpp` — full manual training loop (forward + backward + manual
-  weight update, no optimizer class yet) over all 4 XOR samples. See
+- `examples/xor_training.cpp` — full manual training loop (forward + backward + SGD optimizer step) over all 4 XOR samples. See
   `notes/xor_training.md` for an interesting observation on the Dying ReLU problem.
 
 More to come! 🚀
