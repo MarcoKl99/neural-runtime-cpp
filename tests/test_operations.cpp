@@ -3,6 +3,8 @@
 #include "nrt/operations.hpp"
 #include "nrt/tensor.hpp"
 
+namespace {
+
 // Helper function for comparing tensors with tolerance
 bool tensors_approx_equal(const nrt::Tensor& a, const nrt::Tensor& b, double tol = 1e-9) {
     if (a.shape() != b.shape()) return false;
@@ -16,6 +18,8 @@ bool tensors_approx_equal(const nrt::Tensor& a, const nrt::Tensor& b, double tol
     }
     return true;
 }
+
+}  // namespace
 
 TEST_CASE("MatMul Autodiff - Simple forward pass") {
     nrt::Tensor a({2, 2});

@@ -117,7 +117,7 @@ nrt::Tensor make_target(double t) {
 
 // Execute the full forward-backward iteration for one single step
 // and returns the loss for this sample
-double forward_backward_step(nrt::Linear& layer1, nrt::Linear& layer2, const nrt::Tensor& x,
+double forward_backward_step(nrt::Linear& layer1, nrt::Linear& layer2, nrt::Tensor& x,
                              const nrt::Tensor& target) {
     // Forward
     nrt::Tensor z1 = layer1.forward(x);
@@ -137,7 +137,7 @@ double forward_backward_step(nrt::Linear& layer1, nrt::Linear& layer2, const nrt
     return loss;
 }
 
-double evaluate_average_loss(nrt::Sequential& model, const std::vector<nrt::Tensor>& inputs,
+double evaluate_average_loss(nrt::Sequential& model, std::vector<nrt::Tensor>& inputs,
                              const std::vector<nrt::Tensor>& targets) {
     double total_loss = 0.0;
 

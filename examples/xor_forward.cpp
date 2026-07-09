@@ -44,7 +44,7 @@ int main() {
     double total_loss = 0.0;
 
     for (size_t i = 0; i < inputs.size(); ++i) {
-        const nrt::Tensor& x = inputs[i];
+        nrt::Tensor& x = inputs[i];
         const nrt::Tensor& target = targets[i];
 
         // Forward Pass

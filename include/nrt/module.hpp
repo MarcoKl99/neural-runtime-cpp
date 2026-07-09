@@ -16,7 +16,7 @@ public:
     virtual ~Module() noexcept = default;
 
     // Forward pass: applies the module to input tensor
-    virtual Tensor forward(const Tensor& x) = 0;
+    virtual Tensor forward(Tensor& x) = 0;
 
     // Returns all learnable parameters (weights, biases, potentially others like scale and shift
     // for batchnorm later) - Empty vector if the module has no parameters

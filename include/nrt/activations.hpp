@@ -20,13 +20,13 @@ Tensor sigmoid_backward(const Tensor& grad_output, const Tensor& x);
 
 class ReLU : public Module {
 public:
-    Tensor forward(const Tensor& x) override;
+    Tensor forward(Tensor& x) override;
     std::vector<Parameter> parameters() override;
 };
 
 class Sigmoid : public Module {
 public:
-    Tensor forward(const Tensor& x) override;
+    Tensor forward(Tensor& x) override;
     std::vector<Parameter> parameters() override;
 };
 

@@ -20,7 +20,7 @@ public:
     virtual ~Linear() noexcept = default;
 
     // Implement the Module-methods
-    Tensor forward(const Tensor& x) override;
+    Tensor forward(Tensor& x) override;
     std::vector<Parameter> parameters() override;
 
     // Overwrite randomly init weights for testing

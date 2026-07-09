@@ -17,7 +17,7 @@ public:
     explicit Sequential(std::vector<std::unique_ptr<Module>> modules);
 
     // Forward pass: applies each module in sequence
-    Tensor forward(const Tensor& x) override;
+    Tensor forward(Tensor& x) override;
 
     // Collect all parameters from all contained modules
     std::vector<Parameter> parameters() override;

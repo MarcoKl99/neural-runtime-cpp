@@ -30,6 +30,10 @@ Tensor apply_elementwise(const Tensor& x, const std::function<double(double)>& f
 
 }  // namespace
 
+/*****************/
+/*      ReLU     */
+/*****************/
+
 Tensor relu(const Tensor& x) {
     return apply_elementwise(x, [](double v) { return v > 0.0 ? v : 0.0; });
 }
@@ -40,6 +44,41 @@ Tensor relu_derivative(const Tensor& x) {
     // Makes to difference in practice anyway, as it is only precisely at 0.0
     return apply_elementwise(x, [](double v) { return v > 0.0 ? 1.0 : 0.0; });
 }
+
+Tensor relu_backward(const Tensor& grad_output, const Tensor& x) {
+    // Chain rule elementwise -> Hadamard product
+    return grad_output.hadamard(relu_derivative(x));
+}
+
+Tensor ReLU::forward(Tensor& x) {
+    // Forward: y = relu(x)
+    Tensor result = relu(x);
+
+    // Attach computation node for backward
+    result.creator_node_ =
+        ComputationNode{.backward_fn = [&x](Tensor& output, const Tensor& grad_output) {
+            // Chain rule: ∂L/∂x = ∂L/∂y * ∂y/∂x
+            // where ∂y/∂x = relu_derivative(x)
+
+            Tensor grad_x = grad_output.hadamard(relu_derivative(x));
+
+            // Accumulate gradient
+            x.accumulate_gradient(grad_x);
+
+            // Recurse on input
+            if (x.creator_node_) x.backward_impl(grad_x);
+        }};
+
+    return result;
+}
+
+std::vector<Parameter> ReLU::parameters() {
+    return {};  // No learnable parameters
+}
+
+/*****************/
+/*    Sigmoid    */
+/*****************/
 
 Tensor sigmoid(const Tensor& x) {
     return apply_elementwise(x, [](double v) { return 1.0 / (1.0 + std::exp(-v)); });
@@ -52,26 +91,12 @@ Tensor sigmoid_derivative(const Tensor& x) {
     });
 }
 
-Tensor relu_backward(const Tensor& grad_output, const Tensor& x) {
-    // Chain rule elementwise -> Hadamard product
-    return grad_output.hadamard(relu_derivative(x));
-}
-
 Tensor sigmoid_backward(const Tensor& grad_output, const Tensor& x) {
     // Chain rule elementwise -> Hadamard product
     return grad_output.hadamard(sigmoid_derivative(x));
 }
 
-// Implement the class methods for ReLU and Sigmoid
-Tensor ReLU::forward(const Tensor& x) {
-    return relu(x);
-}
-
-std::vector<Parameter> ReLU::parameters() {
-    return {};  // No learnable parameters
-}
-
-Tensor Sigmoid::forward(const Tensor& x) {
+Tensor Sigmoid::forward(Tensor& x) {
     return sigmoid(x);
 }
 

@@ -7,7 +7,7 @@ namespace nrt {
 Sequential::Sequential(std::vector<std::unique_ptr<Module>> modules)
     : modules_(std::move(modules)) {}
 
-Tensor Sequential::forward(const Tensor& x) {
+Tensor Sequential::forward(Tensor& x) {
     // Create the output in the first step as the input
     Tensor output = x;
 

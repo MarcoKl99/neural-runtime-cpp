@@ -4,6 +4,24 @@
 #include "nrt/activations.hpp"
 #include "nrt/tensor.hpp"
 
+namespace {
+
+// Helper function for comparing tensors with tolerance
+bool tensors_approx_equal(const nrt::Tensor& a, const nrt::Tensor& b, double tol = 1e-9) {
+    if (a.shape() != b.shape()) return false;
+
+    for (size_t i = 0; i < a.size(); ++i) {
+        double a_val = a(i / a.shape()[1], i % a.shape()[1]);
+        double b_val = b(i / b.shape()[1], i % b.shape()[1]);
+        if (std::abs(a_val - b_val) > tol) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
 TEST_CASE("relu", "[activations][relu]") {
     SECTION("1D: positive, negative and zero values") {
         nrt::Tensor x({4});
@@ -220,4 +238,47 @@ TEST_CASE("sigmoid_backward", "[activations][sigmoid][backward]") {
         nrt::Tensor grad_x = nrt::sigmoid_backward(grad_output, x);
         REQUIRE(grad_x.shape() == std::vector<size_t>{2, 2});
     }
+}
+
+TEST_CASE("ReLU Autodiff - Forward pass") {
+    nrt::Tensor x({2, 2});
+    x(0, 0) = -1.0;
+    x(0, 1) = 2.0;
+    x(1, 0) = -3.0;
+    x(1, 1) = 4.0;
+
+    nrt::ReLU relu;
+    nrt::Tensor y = relu.forward(x);
+    nrt::Tensor expected({2, 2});
+    expected(0, 0) = 0.0;
+    expected(0, 1) = 2.0;
+    expected(1, 0) = 0.0;
+    expected(1, 1) = 4.0;
+
+    REQUIRE(tensors_approx_equal(y, expected));
+}
+
+TEST_CASE("ReLU Autodiff - Backward pass") {
+    nrt::Tensor x({2, 2});
+    x(0, 0) = -1.0;
+    x(0, 1) = 2.0;
+    x(1, 0) = -3.0;
+    x(1, 1) = 4.0;
+
+    nrt::ReLU relu;
+    nrt::Tensor y = relu.forward(x);
+    y.backward();
+
+    // grad_x = grad_y * relu_derivative(x)
+    // grad_y = [[1,1],[1,1]] (initialized in backward)
+    // relu_derivative: 0 where x <= 0, 1 where x > 0
+    // Expected grad_x = [[0,1],[0,1]]
+
+    nrt::Tensor expected({2, 2});
+    expected(0, 0) = 0.0;  // x <= 0
+    expected(0, 1) = 1.0;  // x > 0
+    expected(1, 0) = 0.0;  // x <= 0
+    expected(1, 1) = 1.0;  // x > 0
+
+    REQUIRE(tensors_approx_equal(x.gradient(), expected));
 }

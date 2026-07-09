@@ -38,7 +38,7 @@ void Linear::set_weights(const Tensor& w, const Tensor& b) {
     bias_ = b;
 }
 
-Tensor Linear::forward(const Tensor& x) {
+Tensor Linear::forward(Tensor& x) {
     // Check the shapes
     if (x.shape() != std::vector<size_t>{in_features_, 1}) {
         throw std::invalid_argument("Linear::forward: input shape mismatch");
