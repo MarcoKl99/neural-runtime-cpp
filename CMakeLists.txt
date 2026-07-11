@@ -61,15 +61,20 @@ add_executable(xor_deep
 )
 target_link_libraries(xor_deep PRIVATE nrt::core)
 
-
 add_executable(three_class
     examples/three_class.cpp
 )
 target_link_libraries(three_class PRIVATE nrt::core)
 
+add_executable(mnist_mlp
+    examples/mnist_mlp.cpp
+    examples/mnist_loader.cpp
+)
+target_link_libraries(mnist_mlp PRIVATE nrt::core)
+
 
 # Optional local scratch file (gitignore)
 if(EXISTS ${CMAKE_SOURCE_DIR}/dev.cpp)
-    add_executable(dev dev.cpp)
+    add_executable(dev dev.cpp examples/mnist_loader.cpp)
     target_link_libraries(dev PRIVATE nrt::core)
 endif()

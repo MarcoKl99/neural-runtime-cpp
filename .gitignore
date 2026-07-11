@@ -3,6 +3,7 @@ dev.cpp
 PROGRESS.md
 .vscode
 .venv
+data
 
 # Prerequisites
 *.d
