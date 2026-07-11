@@ -62,6 +62,12 @@ add_executable(xor_deep
 target_link_libraries(xor_deep PRIVATE nrt::core)
 
 
+add_executable(three_class
+    examples/three_class.cpp
+)
+target_link_libraries(three_class PRIVATE nrt::core)
+
+
 # Optional local scratch file (gitignore)
 if(EXISTS ${CMAKE_SOURCE_DIR}/dev.cpp)
     add_executable(dev dev.cpp)
