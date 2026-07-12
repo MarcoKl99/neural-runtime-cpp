@@ -106,7 +106,7 @@ This behavior is actually a good sanity check on the implementation: the fact th
 of zero in `layer1` is precisely what `relu_backward` is supposed to do (see its tests: "gradient [...] is blocked where x <= 0").
 Run 2's stuck loss is the correct, expected consequence of that design applied to an unlucky initialization.
 
-## Future mitigations (not implemented yet) 🔧
+## Future mitigations (not implemented yet - state v0.1.0) 🔧
 
 - **Weight initialization** - E.g. He initialization, which scales the initial variance based on `in_features` — designed
     specifically to reduce the chance of ReLU units starting fully in the dead zone

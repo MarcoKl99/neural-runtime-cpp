@@ -34,10 +34,18 @@ void Sequential::add(std::unique_ptr<Module> module) {
     modules_.push_back(std::move(module));
 }
 
-// Get module at given index (for accessing specific layers)
 Module* Sequential::get(size_t index) {
     if (index >= modules_.size()) return nullptr;
     return modules_[index].get();
+}
+
+size_t Sequential::parameter_count() {
+    size_t n = 0;
+    for (auto& param : parameters()) {
+        n += param.value->size();
+    }
+
+    return n;
 }
 
 }  // namespace nrt

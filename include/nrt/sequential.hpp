@@ -28,6 +28,9 @@ public:
     // Get module at given index (for accessing specific layers)
     Module* get(size_t index);
 
+    // Helper function to get the number of weights and biases in the parameters of the model
+    size_t parameter_count();
+
 private:
     std::vector<std::unique_ptr<Module>> modules_;
 };

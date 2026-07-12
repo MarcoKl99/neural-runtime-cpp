@@ -25,6 +25,19 @@ optimizer.step();                         // gradient-descent update
 
 ---
 
+## Example: MNIST with MLP 1️⃣2️⃣3️⃣
+
+The file `examples/mnist_mlp.cpp` implements the application of an MLP on the MNIST dataset, entirely using our own
+nrt:: functionalities.
+
+### Network
+
+```text
+Linear(784,256,He) -> ReLU -> Linear(256,128,He) -> ReLU -> Linear(128,10,Xavier) -> CrossEntropyLoss
+```
+
+---
+
 ## Features ✨
 
 **Tensor** (`nrt/tensor.hpp`)
@@ -123,7 +136,6 @@ x ──▶ Linear ──▶ ReLU ──▶ Linear ──▶ Sigmoid ──▶ M
 - More activations (Leaky ReLU, Tanh)
 - General-DAG autograd (topological backward, gradient de-duplication)
 - Batch dimension, more optimizers (momentum, Adam), model save/load
-- MNIST with a raw MLP (Softmax + CrossEntropyLoss are now in place for this)
 
 ---
 

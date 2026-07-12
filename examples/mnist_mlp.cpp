@@ -31,7 +31,7 @@ large value like 60000 safely means "all of it").
 namespace {
 
 constexpr size_t kBatchSize = 32;
-constexpr int kEpochs = 15;
+constexpr int kDefaultEpochs = 15;
 constexpr double kLearningRate = 0.1;
 constexpr unsigned int kSeed = 42;
 constexpr size_t kDefaultTrainSubsetSize = 5000;
@@ -138,11 +138,13 @@ void print_predictions(nrt::Sequential& model, const mnist::Dataset& dataset,
 int main(int argc, char** argv) {
     size_t train_subset_size;
     size_t test_subset_size;
+    int epochs;
     try {
         train_subset_size = parse_size_arg(argc, argv, 1, kDefaultTrainSubsetSize);
         test_subset_size = parse_size_arg(argc, argv, 2, kDefaultTestSubsetSize);
+        epochs = parse_size_arg(argc, argv, 3, kDefaultEpochs);
     } catch (const std::exception&) {
-        std::cerr << "Usage: " << argv[0] << " [train_subset_size] [test_subset_size]\n";
+        std::cerr << "Usage: " << argv[0] << " [train_subset_size] [test_subset_size] [epochs]\n";
         return 1;
     }
 
@@ -166,6 +168,8 @@ int main(int argc, char** argv) {
     modules.push_back(std::make_unique<nrt::Linear>(128, 10, nrt::WeightInit::Xavier, kSeed + 2));
     nrt::Sequential model(std::move(modules));
 
+    std::cout << "Number of parameters: " << model.parameter_count() << '\n';
+
     nrt::CrossEntropyLoss loss_fn;
     nrt::SGD optimizer(model.parameters(), kLearningRate / static_cast<double>(kBatchSize));
 
@@ -183,7 +187,7 @@ int main(int argc, char** argv) {
     std::iota(indices.begin(), indices.end(), 0);
     std::mt19937 rng(kSeed);
 
-    for (int epoch = 0; epoch < kEpochs; ++epoch) {
+    for (int epoch = 0; epoch < epochs; ++epoch) {
         std::shuffle(indices.begin(), indices.end(), rng);
 
         size_t total_batches = (indices.size() + kBatchSize - 1) / kBatchSize;
@@ -203,13 +207,13 @@ int main(int argc, char** argv) {
             optimizer.step();
 
             ++batch_num;
-            print_progress_bar(batch_num, total_batches, epoch + 1, kEpochs, epoch_start);
+            print_progress_bar(batch_num, total_batches, epoch + 1, epochs, epoch_start);
         }
         std::cout << '\n';  // move past the progress bar before printing the epoch summary
 
         double train_loss = evaluate_average_loss(model, loss_fn, train_data);
         double test_accuracy = evaluate_accuracy(model, test_data);
-        std::cout << "Epoch " << (epoch + 1) << "/" << kEpochs << " - train loss: " << train_loss
+        std::cout << "Epoch " << (epoch + 1) << "/" << epochs << " - train loss: " << train_loss
                   << " - test accuracy: " << test_accuracy << "\n\n";
     }
 
