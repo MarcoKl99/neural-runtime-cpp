@@ -53,6 +53,11 @@ TEST_CASE("Tensor 1D element access", "[tensor][access]") {
         REQUIRE_THROWS_AS(t(3), std::out_of_range);
     }
 
+    SECTION("out of range index throws (const version)") {
+        const nrt::Tensor t_const({2});
+        REQUIRE_THROWS_AS(t_const(10), std::out_of_range);
+    }
+
     SECTION("2-argument access on 1D tensor throws") {
         REQUIRE_THROWS_AS(t(0, 0), std::invalid_argument);
     }
@@ -74,8 +79,28 @@ TEST_CASE("Tensor 2D element access", "[tensor][access]") {
         REQUIRE_THROWS_AS(t(0, 3), std::out_of_range);
     }
 
+    SECTION("out of range row throws (const version)") {
+        const nrt::Tensor t_const({2, 3});
+        REQUIRE_THROWS_AS(t_const(2, 0), std::out_of_range);
+    }
+
+    SECTION("out of range column throws (const version)") {
+        const nrt::Tensor t_const({2, 3});
+        REQUIRE_THROWS_AS(t_const(0, 3), std::out_of_range);
+    }
+
     SECTION("1-argument access on 2D tensor throws") {
         REQUIRE_THROWS_AS(t(0), std::invalid_argument);
+    }
+
+    SECTION("1-argument access on 2D tensor throws (const version)") {
+        const nrt::Tensor t_const({2, 3});
+        REQUIRE_THROWS_AS(t_const(0), std::invalid_argument);
+    }
+
+    SECTION("1-argument access on 2D tensor throws (const version)") {
+        const nrt::Tensor t_const({2, 3});
+        REQUIRE_THROWS_AS(t_const(0), std::invalid_argument);
     }
 }
 
