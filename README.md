@@ -3,7 +3,28 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)<br>
 [![CI](https://github.com/MarcoKl99/neural-runtime-cpp/actions/workflows/ci.yaml/badge.svg)](https://github.com/MarcoKl99/neural-runtime-cpp/actions/workflows/ci.yaml)
 
-A small deep-learning runtime in modern C++ (C++20), built from first principles — **Tensors, a reverse-mode autograd engine, neural-network modules, losses, and optimizers**, with **no ML dependencies** in the core. The goal is a clean, PyTorch-flavoured API.
+A C++20 neural runtime built from first principles to explore the engineering behind deep learning systems.
+
+## Components 🧱
+
+- Reverse-mode automatic differentiation
+- Tensor library with numerical operations
+- Neural network modules, optimizers and loss functions
+- Gradient checking and PyTorch validation
+- End-to-end MNIST training pipeline
+
+## Motivation 🏃‍➡️
+
+The goal of this project is to develop a deeper understanding of the architecture and implementation behind deep learning frameworks.
+
+By implementing every component from scratch in C++, this project explores topics like
+
+- Tensor computation
+- Automatic differentiation
+- Numerical stability
+- Architecture
+
+The usage of the functionalities follows (to some extent 😉) the patterns known from e.g. PyTorch as shown in the example below.
 
 ```cpp
 // A 2 -> 4 -> 1 MLP, trained with autograd + SGD
