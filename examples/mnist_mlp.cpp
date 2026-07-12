@@ -107,6 +107,32 @@ void print_progress_bar(size_t current, size_t total, int epoch, int total_epoch
               << static_cast<int>(eta) << "s" << std::flush;
 }
 
+void print_digit_ascii(const nrt::Tensor& image) {
+    const size_t width = 28;
+    const size_t height = 28;
+    for (size_t row = 0; row < height; ++row) {
+        for (size_t col = 0; col < width; ++col) {
+            double pixel = image(row * width + col, 0);
+            std::cout << (pixel > 0.5 ? '#' : (pixel > 0.2 ? '.' : ' '));
+        }
+        std::cout << '\n';
+    }
+}
+
+void print_predictions(nrt::Sequential& model, const mnist::Dataset& dataset,
+                       const std::vector<size_t>& sample_indices, const std::string& header) {
+    std::cout << "\n=== " << header << " ===\n";
+    for (size_t idx : sample_indices) {
+        auto logits = model.forward(dataset.images[idx]);
+        size_t predicted = argmax(*logits);
+
+        std::cout << "\nSample " << idx << " - true label: " << dataset.labels[idx]
+                  << ", predicted: " << predicted
+                  << (predicted == dataset.labels[idx] ? "  (correct)" : "  (WRONG)") << "\n\n";
+        print_digit_ascii(*dataset.images[idx]);
+    }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -142,6 +168,10 @@ int main(int argc, char** argv) {
 
     nrt::CrossEntropyLoss loss_fn;
     nrt::SGD optimizer(model.parameters(), kLearningRate / static_cast<double>(kBatchSize));
+
+    // Print out predictions before training
+    const std::vector<size_t> sample_indices = {0, 1, 2, 3, 4};
+    print_predictions(model, test_data, sample_indices, "PREDICTIONS BEFORE TRAINING");
 
     std::cout << "Calculating initial train loss and test accuracy..." << '\n';
     double init_train_loss = evaluate_average_loss(model, loss_fn, train_data);
@@ -187,6 +217,9 @@ int main(int argc, char** argv) {
     double final_test_accuracy = evaluate_accuracy(model, test_data);
     std::cout << "Final train loss: " << final_train_loss << '\n';
     std::cout << "Final test accuracy: " << final_test_accuracy << '\n';
+
+    // Print out predictions after training
+    print_predictions(model, test_data, sample_indices, "PREDICTIONS AFTER TRAINING");
 
     return 0;
 }
