@@ -22,6 +22,10 @@ bool tensors_approx_equal(const nrt::Tensor& a, const nrt::Tensor& b, double tol
 
 }  // namespace
 
+TEST_CASE("mock", "[mock-to-delete]") {
+    REQUIRE(1 == 2);
+}
+
 TEST_CASE("relu", "[activations][relu]") {
     SECTION("1D: positive, negative and zero values") {
         nrt::Tensor x({4});
