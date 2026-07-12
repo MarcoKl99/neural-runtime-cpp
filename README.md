@@ -26,91 +26,6 @@ optimizer.step();                         // gradient-descent update
 
 ---
 
-## Example: MNIST with MLP 1️⃣2️⃣3️⃣
-
-The file `examples/mnist_mlp.cpp` implements the application of an MLP on the MNIST dataset, entirely using our own
-nrt:: functionalities.
-
-### Model
-
-```text
-Linear(784,256,He) -> ReLU -> Linear(256,128,He) -> ReLU -> Linear(128,10,Xavier) -> CrossEntropyLoss
-```
-
-**Implementation:**
-
-```cpp
-std::vector<std::unique_ptr<nrt::Module>> modules;
-modules.push_back(std::make_unique<nrt::Linear>(784, 256, nrt::WeightInit::He, kSeed));
-modules.push_back(std::make_unique<nrt::ReLU>());
-modules.push_back(std::make_unique<nrt::Linear>(256, 128, nrt::WeightInit::He, kSeed + 1));
-modules.push_back(std::make_unique<nrt::ReLU>());
-modules.push_back(std::make_unique<nrt::Linear>(128, 10, nrt::WeightInit::Xavier, kSeed + 2));
-nrt::Sequential model(std::move(modules));
-```
-
-**Number of Parameter:** 235'146
-
-**Final Test-Accuracy:** 93.2%
-
-**Subset of MNIST-Data:** 1'000 (train), 250 (test)
-
-### Training
-
-When trained for 10 epochs, the network learned the domain and was able to classify unseen test images.
-The output during training can be seen below.
-
-```text
-Initial train loss: 2.40211
-Initial test accuracy: 0.08
-
-Epoch 1/10 [##############################] 32/32 (100%) 1.13729 batch/s, ETA 0s
-Epoch 1/10 - train loss: 0.72951 - test accuracy: 0.80800
-
-Epoch 2/10 [##############################] 32/32 (100%) 1.14581 batch/s, ETA 0s
-Epoch 2/10 - train loss: 0.44695 - test accuracy: 0.85600
-
-[...]
-
-Epoch 10/10 [##############################] 32/32 (100%) 1.14762 batch/s, ETA 0s
-Epoch 10/10 - train loss: 0.05339 - test accuracy: 0.93200
-
-Final train loss: 0.05339
-Final test accuracy: 0.93200
-```
-
-Also, a small evaluation was implemented, showing the predicted class together with an ASCII art representation
-of the input images.
-
-```text
-Sample 1 - true label: 6, predicted: 6  (correct)
-
-                            
-                            
-              ##            
-             ##.            
-            .##             
-            ##              
-           ##.              
-          .##               
-          ##.               
-         .##                
-         ##                 
-        .#.                 
-        ##                  
-        ##                  
-        ##      .###        
-        #.     ######       
-        ##     #.  ##.      
-        ##    ..    ##      
-        ###         ##      
-         ###.      .#.      
-          .#####.####       
-            .######.        
-```
-
----
-
 ## Features ✨
 
 **Tensor** (`nrt/tensor.hpp`)
@@ -178,6 +93,7 @@ cd build && ctest --output-on-failure
 ./build/xor_forward    # forward pass only
 ./build/xor_deep       # deeper XOR MLP (He/Xavier init)
 ./build/three_class    # 3-class classification (Softmax + CrossEntropyLoss)
+./build/mnist_mlp      # 10-class classification on the MNIST dataset of handwritten digits
 ```
 
 ---
