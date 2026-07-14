@@ -1,5 +1,6 @@
 #include "nrt/tensor.hpp"
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
@@ -74,29 +75,70 @@ void Tensor::print(std::size_t precision) const {
 }
 
 Tensor& Tensor::operator+=(const Tensor& other) {
-    // The shapes must be identical
-    if (shape_ != other.shape_) {
-        throw std::invalid_argument("Tensor::operator+=: shape mismatch");
+    // Compute what the broadcast shape would be
+    std::vector<size_t> broadcast_shape = broadcast_shapes(shape_, other.shape_);
+
+    // For in-place operations, the broadcast result must match our current shape
+    if (broadcast_shape != shape_) {
+        throw std::invalid_argument(
+            "Tensor::operator+=: broadcast result shape does not match left operand");
     }
 
-    // Perform the summation
-    for (size_t i = 0; i < data_.size(); ++i) {
-        data_[i] += other.data_[i];
+    // Compute broadcast strides for other
+    std::vector<size_t> other_strides = broadcast_strides(other.shape_, other.strides_, shape_);
+
+    // Add in-place
+    for (size_t i = 0; i < size(); ++i) {
+        // Convert flat index to coords
+        std::vector<size_t> coords(shape_.size());
+        size_t idx = i;
+        for (int d = shape_.size() - 1; d >= 0; --d) {
+            coords[d] = idx % shape_[d];
+            idx /= shape_[d];
+        }
+
+        // Compute offset in other using broadcast strides
+        size_t other_offset = 0;
+        for (size_t d = 0; d < shape_.size(); ++d) {
+            other_offset += coords[d] * other_strides[d];
+        }
+
+        data_[i] += other.data_[other_offset];
     }
 
     return *this;
 }
 
 Tensor Tensor::operator+(const Tensor& other) const {
-    // Delegate the logic to the operator+= and re-use it here
+    // Compute broadcasted shape
+    std::vector<size_t> result_shape = broadcast_shapes(shape_, other.shape_);
+    Tensor result(result_shape);
 
-    // Copy the Tensor
-    Tensor result = *this;
+    // Compute broadcasted strides for both operands
+    std::vector<size_t> this_strides = broadcast_strides(shape_, strides_, result_shape);
+    std::vector<size_t> other_strides =
+        broadcast_strides(other.shape_, other.strides_, result_shape);
 
-    // Add the other tensor using the operator+=
-    result += other;
+    // Fill result by looping through all flat indices
+    for (size_t i = 0; i < result.size(); ++i) {
+        // Convert flat index to multi-dimensional coordinates
+        std::vector<size_t> coords(result_shape.size());
+        size_t idx = i;
+        for (int d = result_shape.size() - 1; d >= 0; --d) {
+            coords[d] = idx % result_shape[d];
+            idx /= result_shape[d];
+        }
 
-    // Return the new created object
+        // Compute offsets in this and other using broadcast strides
+        size_t this_offset = 0, other_offset = 0;
+        for (size_t d = 0; d < result_shape.size(); ++d) {
+            this_offset += coords[d] * this_strides[d];
+            other_offset += coords[d] * other_strides[d];
+        }
+
+        result.data_[i] = data_[this_offset] + other.data_[other_offset];
+    }
+
     return result;
 }
 
@@ -282,6 +324,67 @@ void Tensor::compute_strides() {
     for (int d = static_cast<int>(shape_.size()) - 2; d >= 0; --d) {
         strides_[d] = strides_[d + 1] * shape_[d + 1];
     }
+}
+
+std::vector<size_t> Tensor::broadcast_shapes(const std::vector<size_t>& shape_a,
+                                             const std::vector<size_t>& shape_b) {
+    // Find max rank and pad both shapes with leading 1s to align from the right
+    size_t max_rank = std::max(shape_a.size(), shape_b.size());
+
+    std::vector<size_t> padded_a(max_rank, 1);
+    std::vector<size_t> padded_b(max_rank, 1);
+
+    // Copy original shapes to the right
+    std::copy(shape_a.begin(), shape_a.end(), padded_a.begin() + (max_rank - shape_a.size()));
+    std::copy(shape_b.begin(), shape_b.end(), padded_b.begin() + (max_rank - shape_b.size()));
+
+    // Check compatibility and compute result
+    std::vector<size_t> result(max_rank);
+    for (size_t i = 0; i < max_rank; ++i) {
+        size_t dim_a = padded_a[i];
+        size_t dim_b = padded_b[i];
+
+        if (dim_a == dim_b) {
+            result[i] = dim_a;
+        } else if (dim_a == 1) {
+            result[i] = dim_b;
+        } else if (dim_b == 1) {
+            result[i] = dim_a;
+        } else {
+            throw std::invalid_argument("Tensor::broadcast_shapes: shapes not broadcastable");
+        }
+    }
+
+    return result;
+}
+
+std::vector<size_t> Tensor::broadcast_strides(const std::vector<size_t>& original_shape,
+                                              const std::vector<size_t>& original_strides,
+                                              const std::vector<size_t>& target_shape) {
+    int original_rank = original_shape.size();
+    int target_rank = target_shape.size();
+    int pad_amount = target_rank - original_rank;
+
+    std::vector<size_t> result(target_rank);
+
+    // Padded dimensions (leading 1s) get stride 0
+    for (int i = 0; i < pad_amount; ++i) {
+        result[i] = 0;
+    }
+
+    // Original dimensions: keep stride if size matches, else set to 0 (broadcast)
+    for (int i = 0; i < original_rank; ++i) {
+        int target_idx = pad_amount + i;
+        if (original_shape[i] == target_shape[target_idx]) {
+            result[target_idx] = original_strides[i];
+        } else if (original_shape[i] == 1) {
+            result[target_idx] = 0;
+        } else {
+            throw std::logic_error("Tensor::broadcast_strides: invalid broadcast state");
+        }
+    }
+
+    return result;
 }
 
 }  // namespace nrt

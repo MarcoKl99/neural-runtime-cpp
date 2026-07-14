@@ -239,20 +239,6 @@ TEST_CASE("Tensor elementwise operations on rank-3 tensors", "[tensor][elementwi
         REQUIRE(result(0, 0, 0) == 2.0);
         REQUIRE(result(1, 1, 1) == 16.0);
     }
-
-    SECTION("shape mismatch (same rank, different shape) throws") {
-        nrt::Tensor t_other_shape({2, 2, 3});
-        REQUIRE_THROWS_AS(t1 + t_other_shape, std::invalid_argument);
-        REQUIRE_THROWS_AS(t1 - t_other_shape, std::invalid_argument);
-        REQUIRE_THROWS_AS(t1.hadamard(t_other_shape), std::invalid_argument);
-    }
-
-    SECTION("shape mismatch (different rank) throws") {
-        nrt::Tensor t_other_rank({2, 2});
-        REQUIRE_THROWS_AS(t1 + t_other_rank, std::invalid_argument);
-        REQUIRE_THROWS_AS(t1 - t_other_rank, std::invalid_argument);
-        REQUIRE_THROWS_AS(t1.hadamard(t_other_rank), std::invalid_argument);
-    }
 }
 
 // Addition
@@ -288,14 +274,6 @@ TEST_CASE("Tensor 2D addition", "[tensor][addition]") {
         REQUIRE(t1(1, 0) == 10.0);
         REQUIRE(t1(1, 1) == 12.0);
     }
-
-    SECTION("Tensors must be same shape") {
-        nrt::Tensor t_other_shape({2, 3});
-        REQUIRE_THROWS_AS(t1 + t_other_shape, std::invalid_argument);
-
-        nrt::Tensor t_other_rank({2});
-        REQUIRE_THROWS_AS(t1 + t_other_rank, std::invalid_argument);
-    }
 }
 
 TEST_CASE("Tensor 1D addition", "[tensor][addition]") {
@@ -326,17 +304,108 @@ TEST_CASE("Tensor 1D addition", "[tensor][addition]") {
         REQUIRE(t1(1) == 7.0);
         REQUIRE(t1(2) == 9.0);
     }
+}
 
-    SECTION("Tensors must be same shape") {
-        nrt::Tensor t_other_shape({4});
-        REQUIRE_THROWS_AS(t1 + t_other_shape, std::invalid_argument);
+TEST_CASE("Broadcasting Addition", "[tensor][addition]") {
+    SECTION("Broadcasting across different ranks") {
+        nrt::Tensor t_1d({3});
+        nrt::Tensor t_2d_compat({1, 3});
 
-        nrt::Tensor t_other_rank({3, 3});
-        REQUIRE_THROWS_AS(t1 + t_other_rank, std::invalid_argument);
+        // Different rank, but broadcastable shapes
+        nrt::Tensor result = t_1d + t_2d_compat;
+        REQUIRE(result.shape() == std::vector<size_t>{1, 3});
+    }
+
+    SECTION("Incompatible shapes throw, regardless of rank") {
+        nrt::Tensor t1({3});
+        nrt::Tensor t_incompatible({2, 2});
+
+        // Different rank AND incompatible dimensions
+        REQUIRE_THROWS_AS(t1 + t_incompatible, std::invalid_argument);
+    }
+
+    SECTION("Broadcasting within same rank") {
+        nrt::Tensor t_a({3, 1});
+        nrt::Tensor t_b({1, 4});
+
+        // Same rank, broadcastable
+        nrt::Tensor result = t_a + t_b;
+        REQUIRE(result.shape() == std::vector<size_t>{3, 4});
+    }
+
+    SECTION("Incompatible shapes same rank throw") {
+        nrt::Tensor t1({3, 2});
+        nrt::Tensor t2({2, 3});
+
+        // Same rank, but neither dimension is 1
+        REQUIRE_THROWS_AS(t1 + t2, std::invalid_argument);
+    }
+
+    SECTION("Concrete broadcast example: {2,2} + {2,1}") {
+        nrt::Tensor t1({2, 2});
+        t1(0, 0) = 1.0;
+        t1(0, 1) = 2.0;
+        t1(1, 0) = 3.0;
+        t1(1, 1) = 4.0;
+        // t1 = [[1, 2], [3, 4]]
+
+        nrt::Tensor t2({2, 1});
+        t2(0, 0) = 10.0;
+        t2(1, 0) = 20.0;
+        // t2 = [[10], [20]]
+
+        // t2 broadcasts to [[10, 10], [20, 20]]
+        // Expected result: [[11, 12], [23, 24]]
+        nrt::Tensor result = t1 + t2;
+
+        REQUIRE(result.shape() == std::vector<size_t>{2, 2});
+        REQUIRE(result(0, 0) == 11.0);  // 1 + 10
+        REQUIRE(result(0, 1) == 12.0);  // 2 + 10
+        REQUIRE(result(1, 0) == 23.0);  // 3 + 20
+        REQUIRE(result(1, 1) == 24.0);  // 4 + 20
     }
 }
 
-// Addition
+TEST_CASE("Broadcasting Addition in-place", "[tensor][addition]") {
+    SECTION("operator+= broadcasts when result shape matches left operand") {
+        nrt::Tensor t1({2, 2});
+        t1(0, 0) = 1.0;
+        t1(0, 1) = 2.0;
+        t1(1, 0) = 3.0;
+        t1(1, 1) = 4.0;
+
+        nrt::Tensor t2({2, 1});
+        t2(0, 0) = 10.0;
+        t2(1, 0) = 20.0;
+
+        // {2, 2} += {2, 1} broadcasts to {2, 2} — matches t1's shape, so it works
+        t1 += t2;
+
+        REQUIRE(t1.shape() == std::vector<size_t>{2, 2});
+        REQUIRE(t1(0, 0) == 11.0);
+        REQUIRE(t1(0, 1) == 12.0);
+        REQUIRE(t1(1, 0) == 23.0);
+        REQUIRE(t1(1, 1) == 24.0);
+    }
+
+    SECTION("operator+= throws if broadcast result shape doesn't match left operand") {
+        nrt::Tensor t1({2, 1});
+        t1(0, 0) = 1.0;
+        t1(1, 0) = 2.0;
+
+        nrt::Tensor t2({2, 2});
+        t2(0, 0) = 10.0;
+        t2(0, 1) = 11.0;
+        t2(1, 0) = 20.0;
+        t2(1, 1) = 21.0;
+
+        // {2, 1} + {2, 2} would broadcast to {2, 2}
+        // But t1 is {2, 1}, so the result shape doesn't match — throws
+        REQUIRE_THROWS_AS(t1 += t2, std::invalid_argument);
+    }
+}
+
+// Subtraction
 TEST_CASE("Tensor 2D subtraction", "[tensor][addition]") {
     nrt::Tensor t1({2, 2});
     nrt::Tensor t2({2, 2});

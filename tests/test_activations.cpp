@@ -286,7 +286,7 @@ TEST_CASE("softmax", "[activations][softmax]") {
     }
 }
 
-TEST_CASE("Softmax Autodiff - Forward pass") {
+TEST_CASE("Softmax Autodiff - Forward pass", "[activations][softmax-autodiff]") {
     auto x = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{3, 1});
     (*x)(0, 0) = 1.0;
     (*x)(1, 0) = 2.0;
@@ -301,7 +301,8 @@ TEST_CASE("Softmax Autodiff - Forward pass") {
     REQUIRE(x->is_leaf());
 }
 
-TEST_CASE("Softmax Autodiff - Backward pass with non-uniform seed") {
+TEST_CASE("Softmax Autodiff - Backward pass with non-uniform seed",
+          "[activations][softmax-autodiff]") {
     auto x = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{3, 1});
     (*x)(0, 0) = 1.0;
     (*x)(1, 0) = 2.0;
@@ -328,7 +329,8 @@ TEST_CASE("Softmax Autodiff - Backward pass with non-uniform seed") {
     REQUIRE(tensors_approx_equal(x->gradient(), expected));
 }
 
-TEST_CASE("Softmax Autodiff - Uniform seed gives zero gradient") {
+TEST_CASE("Softmax Autodiff - Uniform seed gives zero gradient",
+          "[activations][softmax-autodiff]") {
     // sum(softmax(x)) == 1 for any x, so d(sum)/dx must be exactly zero -
     auto x = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{4, 1});
     (*x)(0, 0) = -2.0;
@@ -343,4 +345,12 @@ TEST_CASE("Softmax Autodiff - Uniform seed gives zero gradient") {
     for (size_t i = 0; i < 4; ++i) {
         REQUIRE(std::abs(x->gradient()(i, 0)) < 1e-9);
     }
+}
+
+TEST_CASE("Activations have no parameters", "[activations][parameters]") {
+    nrt::Softmax softmax{};
+    nrt::Sigmoid sigmoid{};
+
+    REQUIRE(softmax.parameters().size() == 0);
+    REQUIRE(sigmoid.parameters().size() == 0);
 }
