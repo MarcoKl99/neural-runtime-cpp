@@ -12,6 +12,14 @@ namespace nrt {
 
 class Tensor {
 public:
+    // Broadcasting helpers for elementwise operations
+    static std::vector<size_t> broadcast_shapes(const std::vector<size_t>& shape_a,
+                                                const std::vector<size_t>& shape_b);
+
+    static std::vector<size_t> broadcast_strides(const std::vector<size_t>& original_shape,
+                                                 const std::vector<size_t>& original_strides,
+                                                 const std::vector<size_t>& target_shape);
+
     // Constructor with given shape - init all values to 0.0
     explicit Tensor(std::vector<size_t> shape);
 
