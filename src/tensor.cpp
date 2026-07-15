@@ -446,4 +446,136 @@ std::vector<size_t> Tensor::broadcast_strides(const std::vector<size_t>& origina
     return result;
 }
 
+/***********************************/
+/** Un-Broadcast Helper Functions **/
+/***********************************/
+
+// Compute what the shape becomes after summing over specified axes
+static std::vector<size_t> compute_summed_shape(const std::vector<size_t>& original_shape,
+                                                const std::vector<size_t>& axes) {
+    std::vector<size_t> result_shape;
+    for (size_t i = 0; i < original_shape.size(); ++i) {
+        if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            result_shape.push_back(original_shape[i]);
+        }
+    }
+    if (result_shape.empty()) {
+        result_shape = {1};  // Summing all dimensions gives scalar
+    }
+    return result_shape;
+}
+
+// Take coords in reduced space and expand to full space by inserting 0s at summed axes
+static std::vector<size_t> expand_coordinates(const std::vector<size_t>& reduced_coords,
+                                              const std::vector<size_t>& axes, size_t full_rank) {
+    std::vector<size_t> full_coords(full_rank, 0);
+    size_t reduced_idx = 0;
+    for (size_t i = 0; i < full_rank; ++i) {
+        if (std::find(axes.begin(), axes.end(), i) == axes.end()) {
+            // Index i is not being removed / summed over
+            full_coords[i] = reduced_coords[reduced_idx++];
+        }
+    }
+
+    // All summed dimensions keep the value 0
+    return full_coords;
+}
+
+// Recursive helper: iterate over all combinations of summed axes and sum values
+static double sum_over_axes_recursive(std::vector<size_t>& coords,
+                                      const std::vector<size_t>& axes_to_sum, size_t axis_idx,
+                                      const std::vector<size_t>& shape,
+                                      const std::vector<size_t>& strides,
+                                      const std::vector<double>& data) {
+    /*
+    coords: Coordinates of a visited data entry, expanded (e.g. {0, 0, 2} -> {0, 1, 2} -> {0, 2, 2})
+    axes_to_sum: The subset of axes idx that we want to sum over, e.g. {1}
+    axis_idx: Iterator index over the indices af axes to sum over (read that again...)
+    shape: Shape of the tensor (member)
+    strides: Strides of the tensor (member)
+    data: Data of the tensor (member)
+    */
+
+    if (axis_idx == axes_to_sum.size()) {
+        // Base case: all summed axes have been iterated, compute offset and return value
+        size_t offset = 0;
+        for (size_t d = 0; d < shape.size(); ++d) {
+            offset += coords[d] * strides[d];
+        }
+        return data[offset];
+    }
+
+    // Recursive case: iterate over current axis
+    double sum = 0.0;
+    size_t axis = axes_to_sum[axis_idx];
+    for (size_t coord = 0; coord < shape[axis]; ++coord) {
+        coords[axis] = coord;
+        sum += sum_over_axes_recursive(coords, axes_to_sum, axis_idx + 1, shape, strides, data);
+    }
+    return sum;
+}
+
+// Main helper function
+Tensor Tensor::sum_over_axes(const std::vector<size_t>& axes) const {
+    // Compute output shape
+    std::vector<size_t> result_shape = compute_summed_shape(shape_, axes);
+    Tensor result(result_shape);
+
+    // For each output element, sum the corresponding input values
+    for (size_t out_idx = 0; out_idx < result.size(); ++out_idx) {
+        // Convert flat output index to reduced coordinates
+        std::vector<size_t> reduced_coords(result_shape.size());
+        size_t idx = out_idx;
+        for (int d = result_shape.size() - 1; d >= 0; --d) {
+            reduced_coords[d] = idx % result_shape[d];
+            idx /= result_shape[d];
+        }
+
+        // Expand to full coordinates
+        std::vector<size_t> full_coords = expand_coordinates(reduced_coords, axes, shape_.size());
+
+        // Sum over all combinations of summed axes
+        result.data_[out_idx] =
+            sum_over_axes_recursive(full_coords, axes, 0, shape_, strides_, data_);
+    }
+
+    return result;
+}
+
+// Helper function to un-broadcast gradients during backward pass (sum over broadcasted dimensions)
+Tensor Tensor::unbroadcast_gradient(const Tensor& grad, const std::vector<size_t>& original_shape) {
+    // grad has been broadcast from original_shape to grad.shape()
+    // We need to sum over the dimensions that were broadcast
+
+    std::vector<size_t> grad_shape = grad.shape();
+    int original_rank = original_shape.size();
+    int grad_rank = grad_shape.size();
+    int pad_amount = grad_rank - original_rank;
+
+    // Pad original_shape with leading 1s to match grad's rank
+    std::vector<size_t> padded_original(grad_rank, 1);
+    std::copy(original_shape.begin(), original_shape.end(), padded_original.begin() + pad_amount);
+
+    // Find which dimensions were broadcast (original size 1, grad size > 1)
+    std::vector<size_t> axes_to_sum;
+    for (size_t i = 0; i < grad_rank; ++i) {
+        if (padded_original[i] == 1 && grad_shape[i] > 1) {
+            // This dimension was broadcast
+            axes_to_sum.push_back(i);
+        } else if (padded_original[i] != grad_shape[i]) {
+            // Shouldn't happen if broadcast_shapes was correct
+            throw std::logic_error("Tensor::unbroadcast_gradient: shape mismatch");
+        }
+    }
+
+    // Sum over all broadcast dimensions
+    if (axes_to_sum.empty()) {
+        // No broadcasting happened, return grad as-is
+        return grad;
+    }
+
+    Tensor summed = grad.sum_over_axes(axes_to_sum);
+    return summed.reshape(original_shape);
+}
+
 }  // namespace nrt

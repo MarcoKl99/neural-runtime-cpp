@@ -551,3 +551,97 @@ TEST_CASE("Chain: MatMul -> Reshape -> Backward") {
 
     REQUIRE(tensors_approx_equal(a->gradient(), expected_grad_a));
 }
+
+TEST_CASE("Add Autodiff with Broadcasting - Forward and Backward", "[operations][broadcast]") {
+    // a: {2, 1}, b: {2, 2} -> broadcasts to {2, 2}
+    auto a = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{2, 1});
+    (*a)(0, 0) = 1.0;
+    (*a)(1, 0) = 2.0;
+    // a = [[1], [2]]
+
+    auto b = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{2, 2});
+    (*b)(0, 0) = 10.0;
+    (*b)(0, 1) = 20.0;
+    (*b)(1, 0) = 30.0;
+    (*b)(1, 1) = 40.0;
+    // b = [[10, 20], [30, 40]]
+
+    // Forward: c = a + b, broadcasts a to [[1, 1], [2, 2]]
+    // Expected: c = [[11, 21], [32, 42]]
+    auto c = nrt::add_autodiff(a, b);
+
+    SECTION("Forward pass broadcasts correctly") {
+        REQUIRE(c->shape() == std::vector<size_t>{2, 2});
+        REQUIRE((*c)(0, 0) == 11.0);
+        REQUIRE((*c)(0, 1) == 21.0);
+        REQUIRE((*c)(1, 0) == 32.0);
+        REQUIRE((*c)(1, 1) == 42.0);
+    }
+
+    SECTION("Backward pass un-broadcasts correctly") {
+        // Seed gradient: all 1s (typical when this is the final loss)
+        c->backward();
+
+        // Gradient of a should be {2, 1} (un-broadcasted from {2, 2})
+        nrt::Tensor grad_a = a->gradient();
+        REQUIRE(grad_a.shape() == std::vector<size_t>{2, 1});
+
+        // grad_a(0, 0) = sum of grad_c(0, 0) and grad_c(0, 1) = 1 + 1 = 2
+        // grad_a(1, 0) = sum of grad_c(1, 0) and grad_c(1, 1) = 1 + 1 = 2
+        REQUIRE(grad_a(0, 0) == 2.0);
+        REQUIRE(grad_a(1, 0) == 2.0);
+
+        // Gradient of b should stay {2, 2} (no broadcasting, so no un-broadcasting)
+        nrt::Tensor grad_b = b->gradient();
+        REQUIRE(grad_b.shape() == std::vector<size_t>{2, 2});
+
+        // grad_b is just the upstream gradient (all 1s)
+        REQUIRE(grad_b(0, 0) == 1.0);
+        REQUIRE(grad_b(0, 1) == 1.0);
+        REQUIRE(grad_b(1, 0) == 1.0);
+        REQUIRE(grad_b(1, 1) == 1.0);
+    }
+}
+
+TEST_CASE("Subtract Autodiff with Broadcasting - Forward and Backward", "[operations][broadcast]") {
+    // a: {2, 1}, b: {2, 2} -> broadcasts to {2, 2}
+    auto a = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{2, 1});
+    (*a)(0, 0) = 10.0;
+    (*a)(1, 0) = 20.0;
+
+    auto b = std::make_shared<nrt::Tensor>(std::vector<std::size_t>{2, 2});
+    (*b)(0, 0) = 1.0;
+    (*b)(0, 1) = 2.0;
+    (*b)(1, 0) = 3.0;
+    (*b)(1, 1) = 4.0;
+
+    // Forward: c = a - b, broadcasts a to [[10, 10], [20, 20]]
+    // Expected: c = [[9, 8], [17, 16]]
+    auto c = nrt::subtract_autodiff(a, b);
+
+    SECTION("Forward pass broadcasts correctly") {
+        REQUIRE(c->shape() == std::vector<size_t>{2, 2});
+        REQUIRE((*c)(0, 0) == 9.0);
+        REQUIRE((*c)(0, 1) == 8.0);
+        REQUIRE((*c)(1, 0) == 17.0);
+        REQUIRE((*c)(1, 1) == 16.0);
+    }
+
+    SECTION("Backward pass un-broadcasts correctly") {
+        c->backward();
+
+        // grad_a should be {2, 1}, summed from grad_c {2, 2}
+        nrt::Tensor grad_a = a->gradient();
+        REQUIRE(grad_a.shape() == std::vector<size_t>{2, 1});
+        REQUIRE(grad_a(0, 0) == 2.0);
+        REQUIRE(grad_a(1, 0) == 2.0);
+
+        // grad_b should be {2, 2}, negated from grad_c
+        nrt::Tensor grad_b = b->gradient();
+        REQUIRE(grad_b.shape() == std::vector<size_t>{2, 2});
+        REQUIRE(grad_b(0, 0) == -1.0);  // negated upstream gradient
+        REQUIRE(grad_b(0, 1) == -1.0);
+        REQUIRE(grad_b(1, 0) == -1.0);
+        REQUIRE(grad_b(1, 1) == -1.0);
+    }
+}

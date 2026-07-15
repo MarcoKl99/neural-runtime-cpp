@@ -93,6 +93,11 @@ public:
     // Reset the accumulated gradients on this Tensor instance
     void zero_grad();
 
+    // Helper method to un-broadcast gradients for the backward pass (sum up gradients over
+    // broadcasted dimensions)
+    static Tensor unbroadcast_gradient(const Tensor& grad,
+                                       const std::vector<size_t>& original_shape);
+
 private:
     std::vector<size_t> shape_;
     std::vector<size_t> strides_;
@@ -106,6 +111,10 @@ private:
     void compute_strides();
     template <typename... Args>
     size_t flat_offset(Args... indices) const;
+
+    // Sum over specified axes, removing those dimensions from the result shape
+    // Parameter axes holds all dimensions to sum over and remove from the shape
+    Tensor sum_over_axes(const std::vector<size_t>& axes) const;
 };
 
 // Note: Template method must be defined in the header, therefore it's here and not in the cpp file
