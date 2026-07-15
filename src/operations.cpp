@@ -71,12 +71,16 @@ std::shared_ptr<Tensor> add_autodiff(std::shared_ptr<Tensor> a, std::shared_ptr<
                             // dL/da = dL/dz
                             // dL/db = dL/dz
 
-                            a->accumulate_gradient(grad_result);
-                            b->accumulate_gradient(grad_result);
+                            // Un-broadcast gradients to match original input shapes
+                            Tensor grad_a = Tensor::unbroadcast_gradient(grad_result, a->shape());
+                            Tensor grad_b = Tensor::unbroadcast_gradient(grad_result, b->shape());
+
+                            a->accumulate_gradient(grad_a);
+                            b->accumulate_gradient(grad_b);
 
                             // Recurse on inputs
-                            if (a->creator_node_) a->backward_impl(grad_result);
-                            if (b->creator_node_) b->backward_impl(grad_result);
+                            if (a->creator_node_) a->backward_impl(grad_a);
+                            if (b->creator_node_) b->backward_impl(grad_b);
                         }};
 
     return result;
@@ -98,12 +102,16 @@ std::shared_ptr<Tensor> subtract_autodiff(std::shared_ptr<Tensor> a, std::shared
                             // dL/da = dL/dz
                             // dL/db = -dL/dz (negated)
 
-                            a->accumulate_gradient(grad_result);
-                            b->accumulate_gradient(grad_result * -1.0);  // Negate for b
+                            // Un-broadcast gradients to match original input shapes
+                            Tensor grad_a = Tensor::unbroadcast_gradient(grad_result, a->shape());
+                            Tensor grad_b = Tensor::unbroadcast_gradient(grad_result, b->shape());
+
+                            a->accumulate_gradient(grad_a);
+                            b->accumulate_gradient(grad_b * -1.0);  // Negate for b
 
                             // Recurse on inputs
-                            if (a->creator_node_) a->backward_impl(grad_result);
-                            if (b->creator_node_) b->backward_impl(grad_result * -1.0);
+                            if (a->creator_node_) a->backward_impl(grad_a);
+                            if (b->creator_node_) b->backward_impl(grad_b * -1.0);
                         }};
 
     return result;
