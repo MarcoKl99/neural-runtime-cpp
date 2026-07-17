@@ -1,8 +1,35 @@
 #include <catch2/catch_test_macros.hpp>
 #include <memory>
 
+#include "nrt/activations.hpp"
 #include "nrt/conv2d.hpp"
+#include "nrt/flatten.hpp"
+#include "nrt/loss.hpp"
+#include "nrt/sequential.hpp"
 #include "nrt/tensor.hpp"
+
+namespace {
+
+// Helper: Check that gradient tensor is not all zeros
+bool gradients_not_all_zero(const nrt::Tensor& grad, double threshold = 1e-10) {
+    double grad_abs_sum = 0.0;
+
+    for (size_t i = 0; i < grad.size(); ++i) {
+        // Convert flat index to multi-dimensional coordinates
+        std::vector<size_t> indices(grad.rank());
+        size_t idx = i;
+        for (int d = grad.rank() - 1; d >= 0; --d) {
+            indices[d] = idx % grad.shape()[d];
+            idx /= grad.shape()[d];
+        }
+
+        grad_abs_sum += std::abs(grad.at(indices));
+    }
+
+    return grad_abs_sum > threshold;
+}
+
+}  // namespace
 
 TEST_CASE("Conv2D output shape", "[conv2d][forward]") {
     // Create a simple conv layer: 1 input channel, 1 output channel, 3x3 kernel
@@ -197,4 +224,105 @@ TEST_CASE("Conv2D gradient flow (backward pass)", "[conv2d][backward]") {
     // = grad_output(0,0,0,0)*weights(0,0,1,1) + grad_output(0,0,1,1)*weights(0,0,0,0)
     // = 1.0*1.0 + 1.0*1.0 = 2.0
     REQUIRE(grad_input(0, 0, 1, 1) == 2.0);
+}
+
+TEST_CASE("Integration - Conv2D + ReLU forward pass", "[integration][conv2d][relu]") {
+    nrt::Conv2D conv(1, 8, 3);
+    nrt::ReLU relu;
+
+    // Input: {1, 1, 5, 5}
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1, 5, 5});
+    for (size_t i = 0; i < 5; ++i) {
+        for (size_t j = 0; j < 5; ++j) {
+            (*input)(0, 0, i, j) =
+                static_cast<double>(i * 5 + j) - 10.0;  // Mix of positive/negative
+        }
+    }
+
+    // Forward through Conv2D + ReLU
+    auto conv_out = conv.forward(input);
+    REQUIRE(conv_out->shape() == std::vector<size_t>{1, 8, 3, 3});
+
+    auto relu_out = relu.forward(conv_out);
+    REQUIRE(relu_out->shape() == std::vector<size_t>{1, 8, 3, 3});
+
+    // Verify ReLU applied (all values >= 0)
+    bool all_non_negative = true;
+    for (size_t i = 0; i < 1; ++i) {
+        for (size_t c = 0; c < 8; ++c) {
+            for (size_t h = 0; h < 3; ++h) {
+                for (size_t w = 0; w < 3; ++w) {
+                    if ((*relu_out)(i, c, h, w) < 0.0) {
+                        all_non_negative = false;
+                    }
+                }
+            }
+        }
+    }
+    REQUIRE(all_non_negative);
+}
+
+TEST_CASE("Integration - Conv2D + ReLU + Flatten + Linear",
+          "[integration][conv2d][full_pipeline]") {
+    // Small network: Conv2D(1,4,3) -> ReLU -> Flatten -> Linear(4*3*3, 2)
+    std::vector<std::unique_ptr<nrt::Module>> modules;
+    modules.push_back(std::make_unique<nrt::Conv2D>(1, 4, 3));
+    modules.push_back(std::make_unique<nrt::ReLU>());
+    modules.push_back(std::make_unique<nrt::Flatten>());
+    modules.push_back(std::make_unique<nrt::Linear>(4 * 3 * 3, 2));
+    nrt::Sequential model(std::move(modules));
+
+    // Input: {2, 1, 5, 5}  (batch of 2)
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{2, 1, 5, 5});
+    for (size_t b = 0; b < 2; ++b) {
+        for (size_t i = 0; i < 5; ++i) {
+            for (size_t j = 0; j < 5; ++j) {
+                (*input)(b, 0, i, j) = static_cast<double>(b * 25 + i * 5 + j);
+            }
+        }
+    }
+
+    // Forward pass
+    auto output = model.forward(input);
+    REQUIRE(output->shape() == std::vector<size_t>{2, 2});
+}
+
+TEST_CASE("Integration - Conv2D gradient flow through ReLU", "[integration][conv2d][backward]") {
+    std::vector<std::unique_ptr<nrt::Module>> modules;
+    modules.push_back(std::make_unique<nrt::Conv2D>(1, 4, 3));
+    modules.push_back(std::make_unique<nrt::ReLU>());
+    modules.push_back(std::make_unique<nrt::Flatten>());
+    modules.push_back(std::make_unique<nrt::Linear>(4 * 3 * 3, 2));
+    nrt::Sequential model(std::move(modules));
+
+    // Input
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1, 5, 5});
+    for (size_t i = 0; i < 5; ++i) {
+        for (size_t j = 0; j < 5; ++j) {
+            (*input)(0, 0, i, j) = static_cast<double>(i * 5 + j);
+        }
+    }
+
+    // Labels
+    auto labels = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1});
+    (*labels)(0, 0) = 1.0;
+
+    // Forward + backward
+    auto logits = model.forward(input);
+    nrt::CrossEntropyLoss loss_fn;
+    auto loss = loss_fn.forward(logits, labels);
+    loss->backward();
+
+    // Verify input gradient
+    auto grad_input = input->gradient();
+    REQUIRE(grad_input.shape() == input->shape());
+    REQUIRE(gradients_not_all_zero(grad_input));
+
+    // Verify Conv2D weights gradient
+    auto conv = dynamic_cast<nrt::Conv2D*>(model.get(0));
+    REQUIRE(gradients_not_all_zero(conv->weights().gradient()));
+
+    // Verify Linear weights gradient
+    auto linear = dynamic_cast<nrt::Linear*>(model.get(3));
+    REQUIRE(gradients_not_all_zero(linear->weights().gradient()));
 }
