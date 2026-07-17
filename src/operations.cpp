@@ -1,5 +1,6 @@
 #include "nrt/operations.hpp"
 
+#include <iostream>
 #include <memory>
 
 #include "nrt/computation_node.hpp"
@@ -161,6 +162,202 @@ std::shared_ptr<Tensor> transpose_autodiff(std::shared_ptr<Tensor> a) {
                         }};
 
     return result;
+}
+
+// Conv2D-Helper 1: Compute gradient w.r.t. bias (simplest!)
+static Tensor compute_grad_bias(const Tensor& grad_output) {
+    // grad_output shape: {batch, out_channels, out_height, out_width}
+    // grad_bias shape: {out_channels}
+    // grad_bias(oc) = mean over b of: (sum over h_out, w_out of: grad_output(b, oc, h_out, w_out))
+
+    size_t batch_size = grad_output.shape()[0];
+    size_t out_channels = grad_output.shape()[1];
+    size_t out_height = grad_output.shape()[2];
+    size_t out_width = grad_output.shape()[3];
+
+    Tensor grad_bias({out_channels, 1});
+
+    for (size_t oc = 0; oc < out_channels; ++oc) {
+        double sum = 0.0;
+        for (size_t b = 0; b < batch_size; ++b) {
+            for (size_t h_out = 0; h_out < out_height; ++h_out) {
+                for (size_t w_out = 0; w_out < out_width; ++w_out) {
+                    sum += grad_output(b, oc, h_out, w_out);
+                }
+            }
+        }
+        grad_bias(oc, 0) = sum / static_cast<double>(batch_size);  // Average over batch!
+    }
+
+    return grad_bias;
+}
+
+// Conv2D-Helper 2: Compute gradient w.r.t. weights
+static Tensor compute_grad_weights(const Tensor& input, const Tensor& grad_output,
+                                   size_t kernel_size) {
+    // input: {batch, in_channels, height, width}
+    // grad_output: {batch, out_channels, out_height, out_width}
+    // returns: {out_channels, in_channels, kernel_size, kernel_size}
+
+    size_t batch = input.shape()[0];
+    size_t in_channels = input.shape()[1];
+    size_t out_channels = grad_output.shape()[1];
+    size_t out_height = grad_output.shape()[2];
+    size_t out_width = grad_output.shape()[3];
+
+    Tensor grad_weights({out_channels, in_channels, kernel_size, kernel_size});
+
+    // For each weight element
+    for (size_t oc = 0; oc < out_channels; ++oc) {
+        for (size_t ic = 0; ic < in_channels; ++ic) {
+            for (size_t kh = 0; kh < kernel_size; ++kh) {
+                for (size_t kw = 0; kw < kernel_size; ++kw) {
+                    double sum = 0.0;
+
+                    // Sum over all batch samples and output positions
+                    for (size_t b = 0; b < batch; ++b) {
+                        for (size_t h_out = 0; h_out < out_height; ++h_out) {
+                            for (size_t w_out = 0; w_out < out_width; ++w_out) {
+                                size_t input_h = h_out + kh;
+                                size_t input_w = w_out + kw;
+
+                                sum += input(b, ic, input_h, input_w) *
+                                       grad_output(b, oc, h_out, w_out);
+                            }
+                        }
+                    }
+
+                    grad_weights(oc, ic, kh, kw) = sum / static_cast<double>(batch);
+                }
+            }
+        }
+    }
+
+    return grad_weights;
+}
+
+// Conv2D-Helper 3: Compute gradient w.r.t. input
+static Tensor compute_grad_input(const Tensor& grad_output, const Tensor& weights,
+                                 const std::vector<size_t>& input_shape, size_t kernel_size) {
+    // Transposed convolution
+    // grad_input(b, ic, h, w) = sum over oc, kh, kw of:
+    // grad_output(b, oc, h - kh, w - kw) * weights(oc, ic, kh, kw)
+    // (where h - kh and w - kw are valid output positions)
+
+    size_t batch = grad_output.shape()[0];
+    size_t in_channels = input_shape[1];
+    size_t height = input_shape[2];
+    size_t width = input_shape[3];
+    size_t out_channels = grad_output.shape()[1];
+    size_t out_height = grad_output.shape()[2];
+    size_t out_width = grad_output.shape()[3];
+
+    Tensor grad_input(input_shape);
+
+    // For each input position
+    // ...did someone see my for-loop?
+    for (size_t b = 0; b < batch; ++b) {
+        for (size_t ic = 0; ic < in_channels; ++ic) {
+            for (size_t h = 0; h < height; ++h) {
+                for (size_t w = 0; w < width; ++w) {
+                    // So this is now kinda through all input positions
+                    double sum = 0.0;
+
+                    // Sum over all output channels and kernel positions
+                    for (size_t oc = 0; oc < out_channels; ++oc) {
+                        for (size_t kh = 0; kh < kernel_size; ++kh) {
+                            for (size_t kw = 0; kw < kernel_size; ++kw) {
+                                // Which output position used this input position?
+                                int h_out = static_cast<int>(h) - static_cast<int>(kh);
+                                int w_out = static_cast<int>(w) - static_cast<int>(kw);
+
+                                // Check if output position is valid
+                                if (h_out >= 0 && h_out < static_cast<int>(out_height) &&
+                                    w_out >= 0 && w_out < static_cast<int>(out_width)) {
+                                    sum +=
+                                        grad_output(b, oc, h_out, w_out) * weights(oc, ic, kh, kw);
+                                }
+                            }
+                        }
+                    }
+
+                    // Store the grad of this input position in the result
+                    grad_input(b, ic, h, w) = sum;
+                }
+            }
+        }
+    }
+
+    return grad_input;
+}
+
+std::shared_ptr<Tensor> conv2d_autodiff(std::shared_ptr<Tensor> input,
+                                        std::shared_ptr<Tensor> weights,
+                                        std::shared_ptr<Tensor> bias, size_t kernel_size) {
+    // Extract dimensions
+    size_t batch = input->shape()[0];
+    size_t in_channels = input->shape()[1];
+    size_t height = input->shape()[2];
+    size_t width = input->shape()[3];
+    size_t out_channels = weights->shape()[0];
+    size_t out_height = height - kernel_size + 1;
+    size_t out_width = width - kernel_size + 1;
+
+    // Forward pass: compute output
+    auto output =
+        std::make_shared<Tensor>(std::vector<size_t>{batch, out_channels, out_height, out_width});
+
+    // Convolution computation
+    std::cout << "Before the beast" << '\n';
+    for (size_t b = 0; b < batch; ++b) {
+        for (size_t oc = 0; oc < out_channels; ++oc) {
+            for (size_t h_out = 0; h_out < out_height; ++h_out) {
+                for (size_t w_out = 0; w_out < out_width; ++w_out) {
+                    // Do this for every output position
+                    // -> Calculate the resulting output value
+                    double sum = 0.0;
+
+                    for (size_t ic = 0; ic < in_channels; ++ic) {
+                        for (size_t kh = 0; kh < kernel_size; ++kh) {
+                            for (size_t kw = 0; kw < kernel_size; ++kw) {
+                                sum += (*input)(b, ic, h_out + kh, w_out + kw) *
+                                       (*weights)(oc, ic, kh, kw);
+                            }
+                        }
+                    }
+
+                    (*output)(b, oc, h_out, w_out) = sum + (*bias)(oc, 0);
+                }
+            }
+        }
+    }
+    std::cout << "After the beast" << '\n';
+
+    // Create backward function
+    auto backward_fn = [input, weights, bias, kernel_size, batch, in_channels](
+                           const Tensor& output, const Tensor& grad_output,
+                           const std::vector<std::shared_ptr<Tensor>>& inputs) {
+        // Compute gradients using helper functions
+        Tensor grad_bias = compute_grad_bias(grad_output);
+        Tensor grad_weights = compute_grad_weights(*input, grad_output, kernel_size);
+        Tensor grad_input = compute_grad_input(grad_output, *weights, input->shape(), kernel_size);
+
+        // Accumulate gradients into input tensors
+        inputs[0]->accumulate_gradient(grad_input);    // input gradient
+        inputs[1]->accumulate_gradient(grad_weights);  // weights gradient
+        inputs[2]->accumulate_gradient(grad_bias);     // bias gradient
+
+        // Recursively backpropagate
+        inputs[0]->backward_impl(grad_input);
+        inputs[1]->backward_impl(grad_weights);
+        inputs[2]->backward_impl(grad_bias);
+    };
+
+    // Attach computation node
+    output->creator_node_ =
+        ComputationNode{.inputs = {input, weights, bias}, .backward_fn = backward_fn};
+
+    return output;
 }
 
 }  // namespace nrt

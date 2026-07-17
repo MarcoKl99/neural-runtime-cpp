@@ -14,6 +14,7 @@ add_library(nrt_core
     src/sequential.cpp
     src/operations.cpp
     src/flatten.cpp
+    src/conv2d.cpp
 )
 
 # Add the include directory to use #include "nrt/..."
@@ -48,6 +49,7 @@ add_executable(
     tests/test_integration.cpp
     tests/test_sequential.cpp
     tests/test_flatten.cpp
+    tests/test_conv2d.cpp
 )
 target_link_libraries(nrt_tests PRIVATE nrt::core Catch2::Catch2WithMain)
 
