@@ -4,6 +4,7 @@ PROGRESS.md
 .vscode
 .venv
 data
+*.bkp
 
 # Prerequisites
 *.d

@@ -76,16 +76,25 @@ public:
     /*  Autograd  */
     /**************/
 
+    /*
+    General Idea:
+        - We call backward() on a result - so on an edge of the comp-graph (e.g. the loss)
+            -> backward() initializes the gradients to 1.0 (w.r.t. themselves)
+            -> backward() calls backward_impl(grad) on itself
+        - backward_impl(grad) calls backward_fn on its creator node
+        - backward_fn calculates the correct gradients w.r.t. the operation, calles
+          accumulate_gradient on the inputs and calls backward_impl(grad) on the inputs recursively
+    */
+
     void backward();
+
+    void accumulate_gradient(const Tensor& grad);
+
+    void backward_impl(const Tensor& grad_ouput);
 
     Tensor gradient();
 
     bool is_leaf();
-
-    void accumulate_gradient(const Tensor& grad);
-
-    // Helper method for backward traversal
-    void backward_impl(const Tensor& grad_ouput);
 
     // Computation node if not leaf - Public for now, maybe to refactor later
     std::optional<ComputationNode> creator_node_;
