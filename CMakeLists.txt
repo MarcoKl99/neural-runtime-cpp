@@ -13,6 +13,7 @@ add_library(nrt_core
     src/optimizer.cpp
     src/sequential.cpp
     src/operations.cpp
+    src/flatten.cpp
 )
 
 # Add the include directory to use #include "nrt/..."
@@ -46,6 +47,7 @@ add_executable(
     tests/test_operations.cpp
     tests/test_integration.cpp
     tests/test_sequential.cpp
+    tests/test_flatten.cpp
 )
 target_link_libraries(nrt_tests PRIVATE nrt::core Catch2::Catch2WithMain)
 
