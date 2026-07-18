@@ -152,13 +152,15 @@ int main(int argc, char** argv) {
     std::cout << "Train subset: " << train_data.images.size()
               << " images, test subset: " << test_data.images.size() << " images\n";
 
-    // Model: Conv2D -> ReLU -> MaxPool2D -> Flatten -> Linear
+    // Model: Conv2D -> ReLU -> MaxPool2D -> Flatten -> Linear -> Linear
     std::vector<std::unique_ptr<nrt::Module>> modules;
     modules.push_back(std::make_unique<nrt::Conv2D>(1, 16, 3, nrt::WeightInit::He));
     modules.push_back(std::make_unique<nrt::ReLU>());
     modules.push_back(std::make_unique<nrt::MaxPool2D>());  // 2 x 2 MaxPooling
     modules.push_back(std::make_unique<nrt::Flatten>());
-    modules.push_back(std::make_unique<nrt::Linear>(16 * 13 * 13, 10, nrt::WeightInit::Xavier));
+    modules.push_back(std::make_unique<nrt::Linear>(16 * 13 * 13, 128, nrt::WeightInit::He));
+    modules.push_back(std::make_unique<nrt::ReLU>());
+    modules.push_back(std::make_unique<nrt::Linear>(128, 10, nrt::WeightInit::Xavier));
     nrt::Sequential model(std::move(modules));
 
     std::cout << "Number of parameters: " << model.parameter_count() << '\n';
