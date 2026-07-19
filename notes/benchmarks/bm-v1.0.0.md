@@ -46,15 +46,26 @@ To test the hypothesis of the convolutional layers being the bottleneck, banchma
 The results can be seen below.
 
 ```text
------------------------------------------------------------------
-Benchmark                       Time             CPU   Iterations
------------------------------------------------------------------
-BM_Conv2D_Forward            16.3 ms         16.3 ms           43
-BM_MaxPool2D_Forward         2.62 ms         2.61 ms          269
-BM_Flatten_Forward          0.026 ms        0.026 ms        26377
-BM_Linear1_Forward           12.9 ms         12.9 ms           56
-BM_Linear2_Forward          0.049 ms        0.049 ms        14319
-BM_CNN_FullForwardPass       32.0 ms         32.0 ms           22
+--------------------------------------------------------------------
+Benchmark                          Time             CPU   Iterations
+--------------------------------------------------------------------
+BM_Conv2D_Forward               16.3 ms         16.3 ms           43
+BM_Conv2D_BackwardPass          32.3 ms         32.2 ms           22
+
+BM_MaxPool2D_Forward            2.58 ms         2.58 ms          273
+BM_MaxPool2D_BackwardPass       3.01 ms         3.01 ms          231
+
+BM_Flatten_Forward             0.027 ms        0.027 ms        26372
+BM_Flatten_BackwardPass        0.080 ms        0.080 ms         8758
+
+BM_Linear1_Forward              12.5 ms         12.5 ms           56
+BM_Linear1_BackwardPass         22.2 ms         22.2 ms           31
+
+BM_Linear2_Forward             0.048 ms        0.048 ms        14685
+BM_Linear2_BackwardPass        0.096 ms        0.096 ms         7372
+
+BM_CNN_FullForwardPass          32.2 ms         32.2 ms           22
+BM_CNN_FullBackwardPass         57.8 ms         57.7 ms           11
 ```
 
 ## Interpretation
@@ -69,4 +80,4 @@ This layer connects all flattened features to the next linear layer, which leads
 
 A very interesting finding is, that the convolutional layer takes even longer than the first linear layer, making up for the largest part of the overall runtime.
 
-*This supports our made hypothesis by indicating, that the largest computational complexity is somewhere in the convolution logic.*
+*This supports our hypothesis by indicating, that the largest computational complexity is somewhere in the convolution logic.*
