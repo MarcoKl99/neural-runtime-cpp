@@ -37,8 +37,6 @@ for (size_t b = 0; b < batch_size; ++b) {                               // batch
 
 This is O(batch × out_channels × out_h × out_w × in_channels × kernel × kernel), of which batch, out_channels, in_channels, and kernel can be seen as constants.
 
-Therefore, the runtime is O(n^2).
-
 ## Benchmarks
 
 To test the hypothesis of the convolutional layers being the bottleneck, banchmarks for all included layers have been implemented in the file `benchmarks/bench_cnn.cpp`.
