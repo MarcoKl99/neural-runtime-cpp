@@ -5,6 +5,7 @@ PROGRESS.md
 .venv
 data
 *.bkp
+playground.py
 
 # Prerequisites
 *.d
