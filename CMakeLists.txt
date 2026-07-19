@@ -3,6 +3,7 @@ project(neural_runtime_cpp LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Core Library
 add_library(nrt_core
@@ -38,6 +39,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
+# Avoid fetching GoogleTest as this is not require here, we only want to use the Benchmark Library
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable benchmark's own tests" FORCE)
+FetchContent_Declare(
+  benchmark
+  GIT_REPOSITORY https://github.com/google/benchmark.git
+  GIT_TAG v1.8.0
+)
+FetchContent_MakeAvailable(benchmark)
+
 enable_testing()
 add_executable(
     nrt_tests
@@ -62,6 +72,12 @@ endif()
 
 include(Catch)
 catch_discover_tests(nrt_tests)
+
+# Benchmarks
+add_executable(nrt_bench_cnn
+    benchmarks/bench_cnn.cpp
+)
+target_link_libraries(nrt_bench_cnn PRIVATE nrt::core benchmark::benchmark)
 
 # Examples
 add_executable(xor_forward

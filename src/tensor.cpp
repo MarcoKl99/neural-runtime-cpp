@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 
 namespace nrt {
@@ -601,6 +602,15 @@ void Tensor::set_at(const std::vector<size_t>& indices, double value) {
         offset += indices[d] * strides_[d];
     }
     data_[offset] = value;
+}
+
+void Tensor::randomize(unsigned int seed) {
+    std::mt19937 gen(seed);
+    std::normal_distribution<double> dist(0.0, 1.0);
+
+    for (size_t i = 0; i < data_.size(); ++i) {
+        data_[i] = dist(gen);
+    }
 }
 
 }  // namespace nrt

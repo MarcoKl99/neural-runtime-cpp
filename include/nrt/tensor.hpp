@@ -75,8 +75,9 @@ public:
     // Reshape
     Tensor reshape(const std::vector<size_t>& new_shape) const;
 
-    // Helper function
+    // Helper functions
     double sum() const;
+    void randomize(unsigned int seed);
 
     /**************/
     /*  Autograd  */
