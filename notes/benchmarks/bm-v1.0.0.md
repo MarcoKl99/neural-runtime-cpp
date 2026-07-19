@@ -66,13 +66,17 @@ BM_CNN_FullForwardPass          32.2 ms         32.2 ms           22
 BM_CNN_FullBackwardPass         57.8 ms         57.7 ms           11
 ```
 
+The times can be seen visually below.
+
+<img src="static/v1.0.0-time-per-layer.png" width="50%">
+
 ## Interpretation
 
 Looking at the retrieved measurements we see, that the layers Conv2D and Linear1 contribute by far the most to the overall execution time.
 
 **Linear1:**
 
-This layer connects all flattened features to the next linear layer, which leads to the number of parameters of `n_linear1 = (16 * 13 * 13) * 128 = 346'112`. Considering that the entire network has `n_total = 347'690`, this accounts for `99.55%` of the entire network. This circumstance leading to a majority of the execution time is not surprising.
+This layer connects all flattened features to the next linear layer, which leads to the number of parameters of `n_linear1 = (16 * 13 * 13) * 128 = 346'112`. Considering that the entire network has `n_total = 347'690` parameters, this accounts for `99.55%` of the entire network. This circumstance leading to a significant part of the execution time is not surprising.
 
 **Conv2D:**
 
