@@ -191,131 +191,81 @@ std::shared_ptr<Tensor> transpose_autodiff(std::shared_ptr<Tensor> a) {
     return result;
 }
 
-// Conv2D-Helper 1: Compute gradient w.r.t. bias (simplest!)
-static Tensor compute_grad_bias(const Tensor& grad_output) {
-    // grad_output shape: {batch, out_channels, out_height, out_width}
-    // grad_bias shape: {out_channels}
-    // grad_bias(oc) = mean over b of: (sum over h_out, w_out of: grad_output(b, oc, h_out, w_out))
+static std::shared_ptr<Tensor> conv_matmul_autodiff(std::shared_ptr<Tensor> weights,
+                                                    std::shared_ptr<Tensor> patches, size_t batch,
+                                                    size_t out_channels, size_t out_height,
+                                                    size_t out_width) {
+    size_t K = weights->size() / out_channels;  // in_channels * kernel_size * kernel_size
+    size_t S = out_height * out_width;
 
-    size_t batch_size = grad_output.shape()[0];
-    size_t out_channels = grad_output.shape()[1];
-    size_t out_height = grad_output.shape()[2];
-    size_t out_width = grad_output.shape()[3];
+    auto output =
+        std::make_shared<Tensor>(std::vector<size_t>{batch, out_channels, out_height, out_width});
+    Tensor weights_2d = weights->reshape({out_channels, K});
 
-    Tensor grad_bias({out_channels, 1});
-
-    for (size_t oc = 0; oc < out_channels; ++oc) {
-        double sum = 0.0;
-        for (size_t b = 0; b < batch_size; ++b) {
-            for (size_t h_out = 0; h_out < out_height; ++h_out) {
-                for (size_t w_out = 0; w_out < out_width; ++w_out) {
-                    sum += grad_output(b, oc, h_out, w_out);
-                }
-            }
-        }
-        grad_bias(oc, 0) = sum / static_cast<double>(batch_size);  // Average over batch!
-    }
-
-    return grad_bias;
-}
-
-// Conv2D-Helper 2: Compute gradient w.r.t. weights
-static Tensor compute_grad_weights(const Tensor& input, const Tensor& grad_output,
-                                   size_t kernel_size) {
-    // input: {batch, in_channels, height, width}
-    // grad_output: {batch, out_channels, out_height, out_width}
-    // returns: {out_channels, in_channels, kernel_size, kernel_size}
-
-    size_t batch = input.shape()[0];
-    size_t in_channels = input.shape()[1];
-    size_t out_channels = grad_output.shape()[1];
-    size_t out_height = grad_output.shape()[2];
-    size_t out_width = grad_output.shape()[3];
-
-    Tensor grad_weights({out_channels, in_channels, kernel_size, kernel_size});
-
-    // For each weight element
-    for (size_t oc = 0; oc < out_channels; ++oc) {
-        for (size_t ic = 0; ic < in_channels; ++ic) {
-            for (size_t kh = 0; kh < kernel_size; ++kh) {
-                for (size_t kw = 0; kw < kernel_size; ++kw) {
-                    double sum = 0.0;
-
-                    // Sum over all batch samples and output positions
-                    for (size_t b = 0; b < batch; ++b) {
-                        for (size_t h_out = 0; h_out < out_height; ++h_out) {
-                            for (size_t w_out = 0; w_out < out_width; ++w_out) {
-                                size_t input_h = h_out + kh;
-                                size_t input_w = w_out + kw;
-
-                                sum += input(b, ic, input_h, input_w) *
-                                       grad_output(b, oc, h_out, w_out);
-                            }
-                        }
-                    }
-
-                    grad_weights(oc, ic, kh, kw) = sum / static_cast<double>(batch);
-                }
-            }
-        }
-    }
-
-    return grad_weights;
-}
-
-// Conv2D-Helper 3: Compute gradient w.r.t. input
-static Tensor compute_grad_input(const Tensor& grad_output, const Tensor& weights,
-                                 const std::vector<size_t>& input_shape, size_t kernel_size) {
-    // Transposed convolution
-    // grad_input(b, ic, h, w) = sum over oc, kh, kw of:
-    // grad_output(b, oc, h - kh, w - kw) * weights(oc, ic, kh, kw)
-    // (where h - kh and w - kw are valid output positions)
-
-    size_t batch = grad_output.shape()[0];
-    size_t in_channels = input_shape[1];
-    size_t height = input_shape[2];
-    size_t width = input_shape[3];
-    size_t out_channels = grad_output.shape()[1];
-    size_t out_height = grad_output.shape()[2];
-    size_t out_width = grad_output.shape()[3];
-
-    Tensor grad_input(input_shape);
-
-    // For each input position
-    // ...did someone see my for-loop?
     for (size_t b = 0; b < batch; ++b) {
-        for (size_t ic = 0; ic < in_channels; ++ic) {
-            for (size_t h = 0; h < height; ++h) {
-                for (size_t w = 0; w < width; ++w) {
-                    // So this is now kinda through all input positions
-                    double sum = 0.0;
+        Tensor patches_b({K, S});
+        for (size_t k = 0; k < K; ++k) {
+            for (size_t s = 0; s < S; ++s) {
+                patches_b(k, s) = (*patches)(k, b * S + s);
+            }
+        }
 
-                    // Sum over all output channels and kernel positions
-                    for (size_t oc = 0; oc < out_channels; ++oc) {
-                        for (size_t kh = 0; kh < kernel_size; ++kh) {
-                            for (size_t kw = 0; kw < kernel_size; ++kw) {
-                                // Which output position used this input position?
-                                int h_out = static_cast<int>(h) - static_cast<int>(kh);
-                                int w_out = static_cast<int>(w) - static_cast<int>(kw);
+        Tensor output_b = weights_2d.matmul(patches_b);  // {out_channels, S}
 
-                                // Check if output position is valid
-                                if (h_out >= 0 && h_out < static_cast<int>(out_height) &&
-                                    w_out >= 0 && w_out < static_cast<int>(out_width)) {
-                                    sum +=
-                                        grad_output(b, oc, h_out, w_out) * weights(oc, ic, kh, kw);
-                                }
-                            }
-                        }
-                    }
-
-                    // Store the grad of this input position in the result
-                    grad_input(b, ic, h, w) = sum;
-                }
+        for (size_t oc = 0; oc < out_channels; ++oc) {
+            for (size_t s = 0; s < S; ++s) {
+                (*output)(b, oc, s / out_width, s % out_width) = output_b(oc, s);
             }
         }
     }
 
-    return grad_input;
+    auto backward_fn = [batch, out_channels, out_height, out_width, K, S](
+                           Tensor& result_output, const Tensor& grad_output,
+                           const std::vector<std::shared_ptr<Tensor>>& inputs) {
+        auto& weights = inputs[0];
+        auto& patches = inputs[1];
+
+        Tensor weights_2d = weights->reshape({out_channels, K});
+        Tensor grad_weights_2d({out_channels, K});
+        Tensor grad_patches(patches->shape());
+
+        for (size_t b = 0; b < batch; ++b) {
+            Tensor patches_b({K, S});
+            for (size_t k = 0; k < K; ++k) {
+                for (size_t s = 0; s < S; ++s) {
+                    patches_b(k, s) = (*patches)(k, b * S + s);
+                }
+            }
+
+            Tensor grad_output_b({out_channels, S});
+            for (size_t oc = 0; oc < out_channels; ++oc) {
+                for (size_t s = 0; s < S; ++s) {
+                    grad_output_b(oc, s) = grad_output(b, oc, s / out_width, s % out_width);
+                }
+            }
+
+            // Weights are shared across the whole batch, so their gradient accumulates.
+            grad_weights_2d = grad_weights_2d + grad_output_b.matmul(patches_b.transpose());
+
+            // Each batch sample writes to a disjoint column range, so plain assignment is fine
+            Tensor grad_patches_b = weights_2d.transpose().matmul(grad_output_b);  // {K, S}
+            for (size_t k = 0; k < K; ++k) {
+                for (size_t s = 0; s < S; ++s) {
+                    grad_patches(k, b * S + s) = grad_patches_b(k, s);
+                }
+            }
+        }
+
+        Tensor grad_weights = grad_weights_2d.reshape(weights->shape());
+        weights->accumulate_gradient(grad_weights);
+        // weights is a leaf parameter tensor — no creator_node_ to recurse into.
+
+        patches->accumulate_gradient(grad_patches);
+        if (patches->creator_node_) patches->backward_impl(grad_patches);
+    };
+
+    output->creator_node_ = ComputationNode{{weights, patches}, backward_fn};
+    return output;
 }
 
 std::shared_ptr<Tensor> conv2d_autodiff(std::shared_ptr<Tensor> input,
@@ -323,64 +273,20 @@ std::shared_ptr<Tensor> conv2d_autodiff(std::shared_ptr<Tensor> input,
                                         std::shared_ptr<Tensor> bias, size_t kernel_size) {
     // Extract dimensions
     size_t batch = input->shape()[0];
-    size_t in_channels = input->shape()[1];
     size_t height = input->shape()[2];
     size_t width = input->shape()[3];
     size_t out_channels = weights->shape()[0];
     size_t out_height = height - kernel_size + 1;
     size_t out_width = width - kernel_size + 1;
 
-    // Forward pass: compute output
-    auto output =
-        std::make_shared<Tensor>(std::vector<size_t>{batch, out_channels, out_height, out_width});
+    auto patches = im2col_autodiff(input, kernel_size, 1, 0);
 
-    // Convolution computation
-    for (size_t b = 0; b < batch; ++b) {
-        for (size_t oc = 0; oc < out_channels; ++oc) {
-            for (size_t h_out = 0; h_out < out_height; ++h_out) {
-                for (size_t w_out = 0; w_out < out_width; ++w_out) {
-                    // Do this for every output position
-                    // -> Calculate the resulting output value
-                    double sum = 0.0;
+    auto output_4d =
+        conv_matmul_autodiff(weights, patches, batch, out_channels, out_height, out_width);
 
-                    for (size_t ic = 0; ic < in_channels; ++ic) {
-                        for (size_t kh = 0; kh < kernel_size; ++kh) {
-                            for (size_t kw = 0; kw < kernel_size; ++kw) {
-                                sum += (*input)(b, ic, h_out + kh, w_out + kw) *
-                                       (*weights)(oc, ic, kh, kw);
-                            }
-                        }
-                    }
+    auto bias_reshaped = reshape_autodiff(bias, {1, out_channels, 1, 1});
 
-                    (*output)(b, oc, h_out, w_out) = sum + (*bias)(oc, 0);
-                }
-            }
-        }
-    }
-
-    // Create backward function
-    auto backward_fn = [input, weights, bias, kernel_size, batch, in_channels](
-                           const Tensor& output, const Tensor& grad_output,
-                           const std::vector<std::shared_ptr<Tensor>>& inputs) {
-        // Compute gradients using helper functions
-        Tensor grad_bias = compute_grad_bias(grad_output);
-        Tensor grad_weights = compute_grad_weights(*input, grad_output, kernel_size);
-        Tensor grad_input = compute_grad_input(grad_output, *weights, input->shape(), kernel_size);
-
-        // Accumulate gradients into input tensors
-        inputs[0]->accumulate_gradient(grad_input);    // input gradient
-        inputs[1]->accumulate_gradient(grad_weights);  // weights gradient
-        inputs[2]->accumulate_gradient(grad_bias);     // bias gradient
-
-        // Recursively backpropagate
-        inputs[0]->backward_impl(grad_input);
-        inputs[1]->backward_impl(grad_weights);
-        inputs[2]->backward_impl(grad_bias);
-    };
-
-    // Attach computation node
-    output->creator_node_ =
-        ComputationNode{.inputs = {input, weights, bias}, .backward_fn = backward_fn};
+    auto output = add_autodiff(output_4d, bias_reshaped);
 
     return output;
 }
@@ -458,6 +364,118 @@ std::shared_ptr<Tensor> maxpool2d_autodiff(std::shared_ptr<Tensor> input) {
     output->creator_node_ = ComputationNode{{input}, backward_fn};
 
     return output;
+}
+
+std::shared_ptr<Tensor> im2col(std::shared_ptr<Tensor> input, size_t kernel_size, size_t stride,
+                               size_t padding) {
+    // Extract dimensions
+    size_t batch = input->shape()[0];
+    size_t in_channels = input->shape()[1];
+    size_t height = input->shape()[2];
+    size_t width = input->shape()[3];
+
+    // Calculate output spatial dimensions
+    size_t out_height = (height + 2 * padding - kernel_size) / stride + 1;
+    size_t out_width = (width + 2 * padding - kernel_size) / stride + 1;
+
+    // Create output matrix: {in_channels * kernel_size^2, batch * out_height * out_width}
+    size_t col_size = in_channels * kernel_size * kernel_size;
+    size_t num_patches = batch * out_height * out_width;
+    auto output = std::make_shared<Tensor>(std::vector<size_t>{col_size, num_patches});
+
+    // Iterate through: batch -> output positions -> extract patches
+    for (size_t b = 0; b < batch; ++b) {
+        for (size_t h_out = 0; h_out < out_height; ++h_out) {
+            for (size_t w_out = 0; w_out < out_width; ++w_out) {
+                // Calculate the flattened column index
+                // We skip i times the product of all remaining dimensions > i
+                // ...pretty cool hmm? ;)
+                size_t col_index = b * out_height * out_width + h_out * out_width + w_out;
+
+                // Get the starting values for the patch
+                size_t h_start = h_out * stride;
+                size_t w_start = w_out * stride;
+
+                // For each channel and kernel value, set the output value
+                for (size_t c = 0; c < in_channels; ++c) {
+                    for (size_t kh = 0; kh < kernel_size; ++kh) {
+                        for (size_t kw = 0; kw < kernel_size; ++kw) {
+                            (*output)(c * kernel_size * kernel_size + kh * kernel_size + kw,
+                                      col_index) = (*input)(b, c, h_start + kh, w_start + kw);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return output;
+}
+
+std::shared_ptr<Tensor> im2col_autodiff(std::shared_ptr<Tensor> input, size_t kernel_size,
+                                        size_t stride, size_t padding) {
+    // Forward: call plain im2col
+    auto patches = im2col(input, kernel_size, stride, padding);
+
+    // Extract dimensions for backward
+    size_t batch = input->shape()[0];
+    size_t in_channels = input->shape()[1];
+    size_t height = input->shape()[2];
+    size_t width = input->shape()[3];
+    size_t out_height = (height + 2 * padding - kernel_size) / stride + 1;
+    size_t out_width = (width + 2 * padding - kernel_size) / stride + 1;
+
+    // Create backward function (col2im: convert patch gradients back to input gradients)
+    auto backward_fn = [batch, in_channels, height, width, kernel_size, stride, padding, out_height,
+                        out_width](const Tensor& patches_output, const Tensor& grad_patches,
+                                   const std::vector<std::shared_ptr<Tensor>>& inputs) {
+        // grad_patches: {in_channels * kernel_size^2, batch * out_h * out_w}
+        // Convert back to: {batch, in_channels, height, width}
+
+        Tensor grad_input(inputs[0]->shape());  // {batch, in_channels, height, width}
+
+        // col2im: accumulate patch gradients back to input gradients
+        for (size_t b = 0; b < batch; ++b) {
+            for (size_t h_out = 0; h_out < out_height; ++h_out) {
+                for (size_t w_out = 0; w_out < out_width; ++w_out) {
+                    // Column index in grad_patches
+                    size_t col_index = b * out_height * out_width + h_out * out_width + w_out;
+
+                    // Starting position in input for this patch
+                    size_t h_start = h_out * stride;
+                    size_t w_start = w_out * stride;
+
+                    // For each channel and kernel position
+                    for (size_t ic = 0; ic < in_channels; ++ic) {
+                        for (size_t kh = 0; kh < kernel_size; ++kh) {
+                            for (size_t kw = 0; kw < kernel_size; ++kw) {
+                                // Input position this patch element came from
+                                size_t input_h = h_start + kh;
+                                size_t input_w = w_start + kw;
+
+                                // Row index in grad_patches for this channel and kernel position
+                                size_t row_in_patches =
+                                    ic * kernel_size * kernel_size + kh * kernel_size + kw;
+
+                                // Accumulate: multiple patches contribute to same input position
+                                grad_input(b, ic, input_h, input_w) +=
+                                    grad_patches(row_in_patches, col_index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Accumulate gradient into input
+        inputs[0]->accumulate_gradient(grad_input);
+
+        // Recursively backpropagate
+        if (inputs[0]->creator_node_) inputs[0]->backward_impl(grad_input);
+    };
+
+    patches->creator_node_ = ComputationNode{.inputs = {input}, .backward_fn = backward_fn};
+    return patches;
 }
 
 }  // namespace nrt
