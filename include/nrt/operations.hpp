@@ -18,5 +18,9 @@ std::shared_ptr<Tensor> conv2d_autodiff(std::shared_ptr<Tensor> input,
                                         std::shared_ptr<Tensor> weights,
                                         std::shared_ptr<Tensor> bias, size_t kernel_size);
 std::shared_ptr<Tensor> maxpool2d_autodiff(std::shared_ptr<Tensor> input);
+std::shared_ptr<Tensor> im2col(std::shared_ptr<Tensor> input, size_t kernel_size, size_t stride = 1,
+                               size_t padding = 0);
+std::shared_ptr<Tensor> im2col_autodiff(std::shared_ptr<Tensor> input, size_t kernel_size,
+                                        size_t stride = 1, size_t padding = 0);
 
 }  // namespace nrt

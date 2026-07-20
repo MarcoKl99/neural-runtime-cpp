@@ -699,3 +699,144 @@ TEST_CASE("Transpose Autodiff - Forward and Backward", "[operations][transpose]"
         REQUIRE((*c)(1, 2) == 6.0);
     }
 }
+
+// To future me: I see that this file is getting a little bit out of control
+// Note: Split this up in the future
+
+TEST_CASE("im2col: tiny 3x3 image, 2x2 kernel, stride 1", "[operations][im2col]") {
+    // Create tiny input: {1, 1, 3, 3}
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1, 3, 3});
+
+    // Fill with values 1-9
+    (*input)(0, 0, 0, 0) = 1;
+    (*input)(0, 0, 0, 1) = 2;
+    (*input)(0, 0, 0, 2) = 3;
+    (*input)(0, 0, 1, 0) = 4;
+    (*input)(0, 0, 1, 1) = 5;
+    (*input)(0, 0, 1, 2) = 6;
+    (*input)(0, 0, 2, 0) = 7;
+    (*input)(0, 0, 2, 1) = 8;
+    (*input)(0, 0, 2, 2) = 9;
+
+    // Call im2col
+    auto output = nrt::im2col(input, 2, 1, 0);  // kernel_size=2, stride=1, padding=0
+
+    // Expected shape: {1*2*2, 1*2*2} = {4, 4}
+    REQUIRE(output->shape()[0] == 4);
+    REQUIRE(output->shape()[1] == 4);
+
+    // Verify patch values
+    // Column 0: patch at (h=0, w=0) = [1, 2, 4, 5]
+    CHECK((*output)(0, 0) == 1.0);  // top-left
+    CHECK((*output)(1, 0) == 2.0);  // top-right
+    CHECK((*output)(2, 0) == 4.0);  // bottom-left
+    CHECK((*output)(3, 0) == 5.0);  // bottom-right
+
+    // Column 1: patch at (h=0, w=1) = [2, 3, 5, 6]
+    CHECK((*output)(0, 1) == 2.0);
+    CHECK((*output)(1, 1) == 3.0);
+    CHECK((*output)(2, 1) == 5.0);
+    CHECK((*output)(3, 1) == 6.0);
+
+    // Column 2: patch at (h=1, w=0) = [4, 5, 7, 8]
+    CHECK((*output)(0, 2) == 4.0);
+    CHECK((*output)(1, 2) == 5.0);
+    CHECK((*output)(2, 2) == 7.0);
+    CHECK((*output)(3, 2) == 8.0);
+
+    // Column 3: patch at (h=1, w=1) = [5, 6, 8, 9]
+    CHECK((*output)(0, 3) == 5.0);
+    CHECK((*output)(1, 3) == 6.0);
+    CHECK((*output)(2, 3) == 8.0);
+    CHECK((*output)(3, 3) == 9.0);
+}
+
+TEST_CASE("im2col: stride = 2", "[operations][im2col]") {
+    // 4x4 input, 2x2 kernel, stride 2 -> 2x2 output positions
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1, 4, 4});
+
+    // Fill with 1-16
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            (*input)(0, 0, i, j) = i * 4 + j + 1;
+        }
+    }
+
+    auto output = nrt::im2col(input, 2, 2, 0);  // stride=2
+
+    // Expected shape: {4, 4}  (2x2 output positions)
+    REQUIRE(output->shape()[0] == 4);
+    REQUIRE(output->shape()[1] == 4);
+
+    // Patch (0,0) at positions (0-1, 0-1): [1, 2, 5, 6]
+    CHECK((*output)(0, 0) == 1.0);
+    CHECK((*output)(1, 0) == 2.0);
+    CHECK((*output)(2, 0) == 5.0);
+    CHECK((*output)(3, 0) == 6.0);
+
+    // Patch (0,1) at positions (0-1, 2-3): [3, 4, 7, 8]
+    CHECK((*output)(0, 1) == 3.0);
+    CHECK((*output)(1, 1) == 4.0);
+    CHECK((*output)(2, 1) == 7.0);
+    CHECK((*output)(3, 1) == 8.0);
+}
+
+TEST_CASE("im2col: multiple channels", "[operations][im2col]") {
+    // {1, 2, 3, 3} = 2 channels, 3x3 spatial
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 2, 3, 3});
+
+    // Channel 0: 1-9
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            (*input)(0, 0, i, j) = i * 3 + j + 1;
+        }
+    }
+
+    // Channel 1: 10-18
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            (*input)(0, 1, i, j) = i * 3 + j + 10;
+        }
+    }
+
+    auto output = nrt::im2col(input, 2, 1, 0);  // 2x2 kernel
+
+    // Expected shape: {2*2*2, 2*2} = {8, 4}
+    REQUIRE(output->shape()[0] == 8);
+    REQUIRE(output->shape()[1] == 4);
+
+    // First patch (0,0):
+    // Channel 0: [1, 2, 4, 5]  rows 0-3
+    // Channel 1: [10, 11, 13, 14]  rows 4-7
+    CHECK((*output)(0, 0) == 1.0);
+    CHECK((*output)(4, 0) == 10.0);
+}
+
+TEST_CASE("im2col: multiple batches", "[operations][im2col]") {
+    // {2, 1, 3, 3} = 2 batches
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{2, 1, 3, 3});
+
+    // Batch 0: 1-9
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            (*input)(0, 0, i, j) = i * 3 + j + 1;
+        }
+    }
+
+    // Batch 1: 10-18
+    for (size_t i = 0; i < 3; ++i) {
+        for (size_t j = 0; j < 3; ++j) {
+            (*input)(1, 0, i, j) = i * 3 + j + 10;
+        }
+    }
+
+    auto output = nrt::im2col(input, 2, 1, 0);
+
+    // Expected shape: {4, 2*2*2} = {4, 8}  (2 batches × 2×2 positions)
+    REQUIRE(output->shape()[0] == 4);
+    REQUIRE(output->shape()[1] == 8);
+
+    // Batch 0 patches in columns 0-3, Batch 1 in columns 4-7
+    CHECK((*output)(0, 0) == 1.0);   // batch 0, patch (0,0)
+    CHECK((*output)(0, 4) == 10.0);  // batch 1, patch (0,0)
+}

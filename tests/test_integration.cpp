@@ -395,18 +395,21 @@ TEST_CASE("Integration - CrossEntropyLoss gradient check (backward matches finit
 // =============================================================================
 TEST_CASE("Integration - Full CNN pipeline (Conv2D + MaxPool2D + Flatten + Linear + Loss)",
           "[integration][cnn][full_pipeline]") {
+    const size_t batch = 6;
+    const size_t num_classes = batch;  // one unique class per sample -> right-sized capacity
+
     // Build a small CNN: Conv2D -> ReLU -> MaxPool2D -> Flatten -> Linear
     std::vector<std::unique_ptr<nrt::Module>> modules;
     modules.push_back(std::make_unique<nrt::Conv2D>(1, 4, 3));  // 1 -> 4 channels, 3×3 kernel
     modules.push_back(std::make_unique<nrt::ReLU>());
     modules.push_back(std::make_unique<nrt::MaxPool2D>());  // 2×2 pooling, stride 2
     modules.push_back(std::make_unique<nrt::Flatten>());
-    modules.push_back(std::make_unique<nrt::Linear>(4 * 3 * 3, 10));  // 36 → 10 classes
+    modules.push_back(std::make_unique<nrt::Linear>(4 * 3 * 3, num_classes));  // 36 → 6 classes
     nrt::Sequential model(std::move(modules));
 
-    // Create input batch: {2, 1, 8, 8} (2 samples, 1 channel, 8×8 images)
-    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{2, 1, 8, 8});
-    for (size_t b = 0; b < 2; ++b) {
+    // Create input batch: {6, 1, 8, 8} (6 samples, 1 channel, 8×8 images)
+    auto input = std::make_shared<nrt::Tensor>(std::vector<size_t>{batch, 1, 8, 8});
+    for (size_t b = 0; b < batch; ++b) {
         for (size_t i = 0; i < 8; ++i) {
             for (size_t j = 0; j < 8; ++j) {
                 (*input)(b, 0, i, j) = static_cast<double>(b * 64 + i * 8 + j) / 100.0;
@@ -414,19 +417,20 @@ TEST_CASE("Integration - Full CNN pipeline (Conv2D + MaxPool2D + Flatten + Linea
         }
     }
 
-    // Create labels: {2, 1} (batch of 2 samples with class indices)
-    auto labels = std::make_shared<nrt::Tensor>(std::vector<size_t>{2, 1});
-    (*labels)(0, 0) = 3.0;
-    (*labels)(1, 0) = 7.0;
+    // Create labels: {6, 1} - sample b belongs to class b
+    auto labels = std::make_shared<nrt::Tensor>(std::vector<size_t>{batch, 1});
+    for (size_t b = 0; b < batch; ++b) {
+        (*labels)(b, 0) = static_cast<double>(b);
+    }
 
     auto logits = model.forward(input);
-    REQUIRE(logits->shape() == std::vector<size_t>{2, 10});
+    REQUIRE(logits->shape() == std::vector<size_t>{batch, num_classes});
 
     nrt::CrossEntropyLoss loss_fn;
     auto loss = loss_fn.forward(logits, labels);
     REQUIRE(loss->shape() == std::vector<size_t>{1, 1});
+    double initial_loss = (*loss)(0, 0);
 
-    // Just check that everything runs without errors
     loss->backward();
 
     // Check the shape of the parameters
@@ -434,5 +438,91 @@ TEST_CASE("Integration - Full CNN pipeline (Conv2D + MaxPool2D + Flatten + Linea
     for (size_t i = 0; i < params.size(); ++i) {
         auto param_grad = params[i].value->gradient();
         REQUIRE(param_grad.shape() == params[i].value->shape());
+    }
+
+    // Train for a while and require the loss to actually go down.
+    nrt::SGD opt(params, 0.05);
+    for (int epoch = 0; epoch < 5000; ++epoch) {
+        opt.zero_grad();
+        auto pred = model.forward(input);
+        auto l = loss_fn.forward(pred, labels);
+        l->backward();
+        opt.step();
+    }
+
+    auto final_logits = model.forward(input);
+    auto final_loss_tensor = loss_fn.forward(final_logits, labels);
+    double final_loss = (*final_loss_tensor)(0, 0);
+
+    REQUIRE(final_loss < initial_loss * 0.5);
+
+    // Each sample should now be classified as its own unique class.
+    auto argmax_class = [](const nrt::Tensor& t, size_t row) {
+        size_t best = 0;
+        double best_val = t(row, 0);
+        for (size_t c = 1; c < t.shape()[1]; ++c) {
+            if (t(row, c) > best_val) {
+                best_val = t(row, c);
+                best = c;
+            }
+        }
+        return best;
+    };
+    for (size_t b = 0; b < batch; ++b) {
+        REQUIRE(argmax_class(*final_logits, b) == b);
+    }
+}
+
+// =============================================================================
+// 7) BATCH INDEPENDENCE: Conv2D on a batch of N samples must produce exactly the
+//    same per-sample output as running each sample through the same layer alone.
+//    Catches bugs where samples get mixed across the batch axis (e.g. an invalid
+//    reshape after a batched matmul) - the kind of bug that silently breaks
+//    training without ever showing up as a shape mismatch or a gradcheck failure.
+// =============================================================================
+TEST_CASE("Integration - Conv2D forward is batch-independent", "[integration][cnn][conv2d]") {
+    nrt::Conv2D layer(1, 2, 3);  // out_channels > 1 is required to expose batch/channel mixing
+
+    const size_t batch = 3;
+    const size_t image_size = 6;
+
+    auto batched_input =
+        std::make_shared<nrt::Tensor>(std::vector<size_t>{batch, 1, image_size, image_size});
+
+    for (size_t b = 0; b < batch; ++b) {
+        for (size_t i = 0; i < image_size; ++i) {
+            for (size_t j = 0; j < image_size; ++j) {
+                // Distinct, deterministic values per sample so no two samples look alike.
+                (*batched_input)(b, 0, i, j) =
+                    static_cast<double>(b * 100 + i * image_size + j) / 100.0;
+            }
+        }
+    }
+
+    auto batched_output = layer.forward(batched_input);
+    const size_t out_channels = batched_output->shape()[1];
+    const size_t out_height = batched_output->shape()[2];
+    const size_t out_width = batched_output->shape()[3];
+
+    for (size_t b = 0; b < batch; ++b) {
+        // Create a local copy of the image at b
+        auto single_input =
+            std::make_shared<nrt::Tensor>(std::vector<size_t>{1, 1, image_size, image_size});
+        for (size_t i = 0; i < image_size; ++i) {
+            for (size_t j = 0; j < image_size; ++j) {
+                (*single_input)(0, 0, i, j) = (*batched_input)(b, 0, i, j);
+            }
+        }
+
+        auto single_output = layer.forward(single_input);
+
+        for (size_t oc = 0; oc < out_channels; ++oc) {
+            for (size_t h = 0; h < out_height; ++h) {
+                for (size_t w = 0; w < out_width; ++w) {
+                    REQUIRE(approx_equal((*batched_output)(b, oc, h, w),
+                                         (*single_output)(0, oc, h, w)));
+                }
+            }
+        }
     }
 }
