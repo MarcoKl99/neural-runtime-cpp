@@ -6,6 +6,8 @@ PROGRESS.md
 data
 *.bkp
 playground.py
+*.raw
+benchmarks/results
 
 # Prerequisites
 *.d
